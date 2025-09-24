@@ -80,7 +80,7 @@ jobs:
     - name: Create GitHub Secrets for Deploy Workflow
       if: github.event.inputs.action == 'apply'
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         cd terraform
         INSTANCE_IP=$(terraform output -raw instance_public_ip)
