@@ -133,10 +133,16 @@ data "aws_route53_zone" "domain" {
   private_zone = false
 }
 
-# Create A record for the subdomain
+# Create A record for the subdomain - using local to determine zone_id
+locals {
+  zone_id = var.create_hosted_zone && length(aws_route53_zone.demo_zone) > 0 ? aws_route53_zone.demo_zone[0].zone_id : (
+    length(data.aws_route53_zone.domain) > 0 ? data.aws_route53_zone.domain[0].zone_id : null
+  )
+}
+
 resource "aws_route53_record" "subdomain" {
-  count           = !var.skip_route53 && var.create_dns_record ? 1 : 0
-  zone_id         = var.create_hosted_zone ? aws_route53_zone.demo_zone[0].zone_id : data.aws_route53_zone.domain[0].zone_id
+  count           = !var.skip_route53 && var.create_dns_record && local.zone_id != null ? 1 : 0
+  zone_id         = local.zone_id
   name            = var.domain_name
   type            = "A"
   ttl             = 300
