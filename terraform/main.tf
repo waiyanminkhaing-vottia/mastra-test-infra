@@ -35,33 +35,33 @@ resource "aws_lightsail_instance" "mastra_instance" {
   }
 }
 
-# Open necessary ports
-resource "aws_lightsail_instance_port_state" "ssh" {
+# Open necessary ports using correct Lightsail resource
+resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
   instance_name = aws_lightsail_instance.mastra_instance.name
-  port_number   = 22
-  port_protocol = "tcp"
-  state         = "open"
-}
 
-resource "aws_lightsail_instance_port_state" "http" {
-  instance_name = aws_lightsail_instance.mastra_instance.name
-  port_number   = 80
-  port_protocol = "tcp"
-  state         = "open"
-}
+  port_info {
+    protocol  = "tcp"
+    from_port = 22
+    to_port   = 22
+  }
 
-resource "aws_lightsail_instance_port_state" "https" {
-  instance_name = aws_lightsail_instance.mastra_instance.name
-  port_number   = 443
-  port_protocol = "tcp"
-  state         = "open"
-}
+  port_info {
+    protocol  = "tcp"
+    from_port = 80
+    to_port   = 80
+  }
 
-resource "aws_lightsail_instance_port_state" "postgres" {
-  instance_name = aws_lightsail_instance.mastra_instance.name
-  port_number   = 5432
-  port_protocol = "tcp"
-  state         = "open"
+  port_info {
+    protocol  = "tcp"
+    from_port = 443
+    to_port   = 443
+  }
+
+  port_info {
+    protocol  = "tcp"
+    from_port = 5432
+    to_port   = 5432
+  }
 }
 
 # Create static IP
