@@ -36,16 +36,9 @@ jobs:
         # Setup SSH
         mkdir -p ~/.ssh
 
-        # Check if we have a valid SSH key from Terraform
-        if [[ "$LIGHTSAIL_SSH_KEY" == *"Using existing key pair"* ]]; then
-          echo "⚠️  Using existing key pair - you need to provide SSH key manually"
-          echo "Please set LIGHTSAIL_SSH_KEY secret with your existing private key"
-          echo "For development, you can also set use_existing_key_pair=false in Terraform"
-          exit 1
-        else
-          echo "$LIGHTSAIL_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-        fi
+        # Setup SSH key from Terraform output
+        echo "$LIGHTSAIL_SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
 
         # Validate SSH key format
         if ! ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
