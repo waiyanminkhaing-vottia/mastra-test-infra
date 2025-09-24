@@ -49,10 +49,12 @@ jobs:
       id: plan
       run: |
         cd terraform
-        terraform plan -var="ssh_public_key=${{ vars.SSH_PUBLIC_KEY }}" -out=tfplan
+        echo "Debugging: SSH_PUBLIC_KEY length: ${#SSH_PUBLIC_KEY}"
+        terraform plan -var="ssh_public_key=$SSH_PUBLIC_KEY" -out=tfplan
       continue-on-error: true
       env:
         TF_IN_AUTOMATION: true
+        SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
 
     - name: Terraform Plan Status
       if: steps.plan.outcome == 'failure'
@@ -70,9 +72,10 @@ jobs:
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
-        terraform destroy -auto-approve -var="ssh_public_key=${{ vars.SSH_PUBLIC_KEY }}"
+        terraform destroy -auto-approve -var="ssh_public_key=$SSH_PUBLIC_KEY"
       env:
         TF_IN_AUTOMATION: true
+        SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
 
     - name: Output Instance Info
       if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
