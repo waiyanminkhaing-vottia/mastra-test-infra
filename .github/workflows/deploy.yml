@@ -11,19 +11,58 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup SSH
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_wrapper: false
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+
+    - name: Setup SSH from Terraform outputs
       run: |
+        cd terraform
+        terraform init
+
+        # Get values from Terraform outputs
+        LIGHTSAIL_HOST=$(terraform output -raw instance_public_ip)
+        LIGHTSAIL_SSH_KEY=$(terraform output -raw ssh_private_key)
+        LIGHTSAIL_USER="ec2-user"
+
+        # Setup SSH
         mkdir -p ~/.ssh
-        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
-      env:
-        SSH_KNOWN_HOSTS_FILE: ~/.ssh/known_hosts
+
+        # Check if we have a valid SSH key from Terraform
+        if [[ "$LIGHTSAIL_SSH_KEY" == *"Using existing key pair"* ]]; then
+          echo "⚠️  Using existing key pair - you need to provide SSH key manually"
+          echo "Please set LIGHTSAIL_SSH_KEY secret with your existing private key"
+          echo "For development, you can also set use_existing_key_pair=false in Terraform"
+          exit 1
+        else
+          echo "$LIGHTSAIL_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+        fi
+
+        # Validate SSH key format
+        if ! ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
+          echo "❌ Invalid SSH key format"
+          exit 1
+        fi
+
+        ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts
+
+        # Export for later steps
+        echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
+        echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
 
 
     - name: Deploy pgvector container
       run: |
-        ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+        ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
           # Ensure shared network exists
           if ! docker network ls | grep -q "mastra-test-network"; then
             docker network create mastra-test-network --driver bridge
@@ -58,7 +97,7 @@ jobs:
 
     - name: Verify deployment
       run: |
-        ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+        ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
           docker ps | grep postgres-pgvector
           docker logs postgres-pgvector --tail=20
         EOF

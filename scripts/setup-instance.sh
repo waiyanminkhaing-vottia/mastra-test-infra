@@ -6,7 +6,7 @@
 set -euo pipefail
 
 INSTANCE_IP=${1:-${LIGHTSAIL_HOST:-}}
-SSH_USER="${SSH_USER:-ubuntu}"
+SSH_USER="${SSH_USER:-ec2-user}"
 SSH_KEY="${SSH_KEY:-}"
 SETUP_SCRIPT="${SETUP_SCRIPT:-terraform/user_data.sh}"
 

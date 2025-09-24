@@ -58,7 +58,19 @@ jobs:
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
-        terraform apply -auto-approve tfplan
+        # Try with existing resources first
+        terraform apply -auto-approve tfplan || {
+          echo "⚠️  Apply failed, trying with existing key pair..."
+          echo "This is normal for development if resources already exist"
+          terraform apply -auto-approve -var="use_existing_key_pair=true" || {
+            echo "❌ Both attempts failed. Check the logs above for specific errors"
+            echo "💡 For development, you might need to:"
+            echo "   1. Check if resources already exist with different names"
+            echo "   2. Run 'terraform destroy' and try again"
+            echo "   3. Check AWS permissions"
+            exit 1
+          }
+        }
       env:
         TF_IN_AUTOMATION: true
 
@@ -77,29 +89,6 @@ jobs:
         echo "## Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
         terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
 
-    - name: Create GitHub Secrets for Deploy Workflow
-      if: github.event.inputs.action == 'apply'
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        cd terraform
-        INSTANCE_IP=$(terraform output -raw instance_public_ip)
-        DOMAIN=$(terraform output -json dns_configuration | jq -r '.domain')
-        SSH_PRIVATE_KEY=$(terraform output -raw ssh_private_key)
-
-        # Create LIGHTSAIL_HOST secret
-        echo "$INSTANCE_IP" | gh secret set LIGHTSAIL_HOST
-
-        # Create LIGHTSAIL_USER secret
-        echo "ec2-user" | gh secret set LIGHTSAIL_USER
-
-        # Create SSH private key secret
-        echo "$SSH_PRIVATE_KEY" | gh secret set LIGHTSAIL_SSH_KEY
-
-        echo "✅ Created GitHub secrets:"
-        echo "- LIGHTSAIL_HOST: $INSTANCE_IP"
-        echo "- LIGHTSAIL_USER: ec2-user"
-        echo "- LIGHTSAIL_SSH_KEY: [SSH private key created]"
 
     - name: Display Connection Info
       if: github.event.inputs.action == 'apply'
@@ -110,7 +99,7 @@ jobs:
 
         echo "::notice title=Instance IP::Instance IP is $INSTANCE_IP"
         echo "🚀 Infrastructure deployed successfully!"
-        echo "✅ GitHub secrets automatically created for deploy workflow"
+        echo "✅ Infrastructure configured - no manual secrets needed"
         echo "📋 Next steps:"
         echo "1. Create DNS A record: $DOMAIN → $INSTANCE_IP"
         echo "2. Run 'Deploy to Lightsail' workflow to configure Nginx"

@@ -21,21 +21,28 @@ provider "aws" {
 }
 
 
-# Generate random suffix for unique naming
-resource "random_id" "suffix" {
-  byte_length = 4
+# Try to get existing SSH key pair first
+data "aws_lightsail_key_pair" "existing_key" {
+  count = var.use_existing_key_pair ? 1 : 0
+  name  = "${var.project_name}-key"
 }
 
-# Generate SSH key pair
+# Generate SSH key pair only if not using existing
 resource "tls_private_key" "ssh_key" {
+  count     = var.use_existing_key_pair ? 0 : 1
   algorithm = "RSA"
   rsa_bits  = 4096
 }
 
-# Create a key pair for the instance using generated key
+# Create a key pair for the instance using generated key (only if not using existing)
 resource "aws_lightsail_key_pair" "mastra_key" {
-  name       = "${var.project_name}-key-${random_id.suffix.hex}"
-  public_key = tls_private_key.ssh_key.public_key_openssh
+  count      = var.use_existing_key_pair ? 0 : 1
+  name       = "${var.project_name}-key"
+  public_key = tls_private_key.ssh_key[0].public_key_openssh
+
+  lifecycle {
+    ignore_changes = [public_key]
+  }
 }
 
 # Create the Lightsail instance
@@ -44,7 +51,7 @@ resource "aws_lightsail_instance" "mastra_instance" {
   availability_zone = data.aws_availability_zones.available.names[0]
   blueprint_id      = "amazon_linux_2023"
   bundle_id         = var.instance_bundle_id
-  key_pair_name     = aws_lightsail_key_pair.mastra_key.name
+  key_pair_name     = var.use_existing_key_pair ? data.aws_lightsail_key_pair.existing_key[0].name : aws_lightsail_key_pair.mastra_key[0].name
   user_data         = file("${path.module}/user_data.sh")
 
   tags = {
@@ -85,7 +92,11 @@ resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
 
 # Create static IP
 resource "aws_lightsail_static_ip" "mastra_static_ip" {
-  name = "${var.project_name}-static-ip-${random_id.suffix.hex}"
+  name = "${var.project_name}-static-ip"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Attach static IP to instance
@@ -99,11 +110,29 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Get the hosted zone for the domain (if it exists in Route53)
+# Create Route53 hosted zone if it doesn't exist
+resource "aws_route53_zone" "demo_zone" {
+  count = var.create_hosted_zone ? 1 : 0
+  name  = var.base_domain
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Get the hosted zone for the domain (existing or newly created)
 data "aws_route53_zone" "domain" {
   count        = var.create_dns_record ? 1 : 0
   name         = var.base_domain
   private_zone = false
+
+  depends_on = [aws_route53_zone.demo_zone]
 }
 
 # Create A record for the subdomain

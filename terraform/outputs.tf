@@ -20,18 +20,18 @@ output "static_ip_name" {
 
 output "ssh_command" {
   description = "SSH command to connect to the instance"
-  value       = "ssh -i ~/.ssh/mastra-key ubuntu@${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
+  value       = "ssh -i ~/.ssh/mastra-key ec2-user@${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
 }
 
 output "ssh_private_key" {
   description = "SSH private key for instance access"
-  value       = tls_private_key.ssh_key.private_key_pem
+  value       = var.use_existing_key_pair ? "Using existing key pair - private key not available through Terraform" : tls_private_key.ssh_key[0].private_key_pem
   sensitive   = true
 }
 
 output "ssh_public_key" {
   description = "SSH public key for instance access"
-  value       = tls_private_key.ssh_key.public_key_openssh
+  value       = var.use_existing_key_pair ? data.aws_lightsail_key_pair.existing_key[0].public_key : tls_private_key.ssh_key[0].public_key_openssh
 }
 
 output "health_check_command" {
@@ -63,6 +63,18 @@ output "dns_configuration" {
     ip_address        = aws_lightsail_static_ip.mastra_static_ip.ip_address
     auto_created      = var.create_dns_record
     manual_setup_note = var.create_dns_record ? "DNS A record created automatically in Route53" : "Manually create A record: ${var.domain_name} → ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
+  }
+}
+
+output "hosted_zone_info" {
+  description = "Route53 hosted zone information"
+  value = var.create_hosted_zone ? {
+    zone_id      = aws_route53_zone.demo_zone[0].zone_id
+    name_servers = aws_route53_zone.demo_zone[0].name_servers
+    domain       = aws_route53_zone.demo_zone[0].name
+    created      = "Route53 hosted zone created for ${var.base_domain}"
+  } : {
+    created = "Using existing hosted zone for ${var.base_domain}"
   }
 }
 

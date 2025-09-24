@@ -26,17 +26,29 @@ variable "instance_bundle_id" {
 variable "domain_name" {
   description = "Custom domain name for the application"
   type        = string
-  default     = "test.dev-maestra.vottia.me"
+  default     = "demo.vottia.me"
 }
 
 variable "base_domain" {
   description = "Base domain name (Route53 hosted zone)"
   type        = string
-  default     = "dev-maestra.vottia.me"
+  default     = "demo.vottia.me"
 }
 
 variable "create_dns_record" {
   description = "Whether to create DNS A record automatically (requires Route53 hosted zone)"
   type        = bool
   default     = true
+}
+
+variable "create_hosted_zone" {
+  description = "Whether to create Route53 hosted zone for the base domain"
+  type        = bool
+  default     = true
+}
+
+variable "use_existing_key_pair" {
+  description = "Whether to use existing key pair instead of creating new one"
+  type        = bool
+  default     = false
 }

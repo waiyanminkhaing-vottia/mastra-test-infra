@@ -37,9 +37,9 @@ Development infrastructure for deploying multiple Next.js applications using AWS
 
 | URL | Docker Port | Application |
 |-----|-------------|-------------|
-| `http://test.maestra.vottia.me/` | 3000 | Main Next.js App |
-| `http://test.maestra.vottia.me/sanden` | 3001 | Sanden App |
-| `http://test.maestra.vottia.me/health` | - | Health Check Endpoint |
+| `http://demo.vottia.me/` | 3000 | Main Next.js App |
+| `http://demo.vottia.me/sanden` | 3001 | Sanden App |
+| `http://demo.vottia.me/health` | - | Health Check Endpoint |
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ terraform apply -var="ssh_public_key=$(cat ~/.ssh/id_rsa.pub)"
 
 After deployment:
 1. Note the static IP from terraform outputs
-2. Create DNS A record: `test.maestra.vottia.me` → `your-static-ip`
+2. Create DNS A record: `demo.vottia.me` → `your-static-ip`
 
 ### 3. Deploy Applications
 
@@ -80,7 +80,7 @@ SSH into your instance and run your Next.js containers:
 
 ```bash
 # SSH to instance
-ssh -i ~/.ssh/mastra-key ubuntu@<INSTANCE_IP>
+ssh -i ~/.ssh/mastra-key ec2-user@<INSTANCE_IP>
 
 # Run main app (routes to /)
 docker run -d -p 3000:3000 --name main-app your-main-nextjs-image
@@ -96,7 +96,7 @@ docker ps
 
 ### Lightsail Instance
 - **Size**: 2 vCPU, 4 GB RAM, 80 GB SSD (`medium_2_0`)
-- **OS**: Ubuntu 22.04
+- **OS**: Amazon Linux 2023 (ec2-user)
 - **Region**: Configurable via `aws_region` variable
 
 ### Pre-installed Software
@@ -190,7 +190,7 @@ Add the new route to the URL routing table above.
 ### Health Checks
 ```bash
 # Application health
-curl http://test.maestra.vottia.me/health
+curl http://demo.vottia.me/health
 
 # Instance health check (comprehensive)
 ./scripts/check-instance-health.sh <INSTANCE_IP>
@@ -204,7 +204,7 @@ docker ps
 ```
 
 ### Log Files
-- **Setup logs**: `/home/ubuntu/setup.log`
+- **Setup logs**: `/home/ec2-user/setup.log`
 - **Nginx access**: `/var/log/nginx/access.log`
 - **Nginx errors**: `/var/log/nginx/error.log`
 - **Container logs**: `docker logs <container-name>`
@@ -266,6 +266,6 @@ Perfect for development and testing environments.
 
 For issues:
 1. Check the troubleshooting section above
-2. Review setup logs: `/home/ubuntu/setup.log`
+2. Review setup logs: `/home/ec2-user/setup.log`
 3. Verify container and service status
 4. Check GitHub Actions workflow logs
