@@ -3,7 +3,7 @@
 # User data script for Mastra test infrastructure setup
 # This script runs on instance first boot
 
-set -euo pipefail
+set -eu
 
 # Function to log messages with timestamps
 log() {
