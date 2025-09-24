@@ -13,12 +13,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - mastra-network
+      - mastra-test-network
     restart: unless-stopped
 
 volumes:
   postgres_data:
 
 networks:
-  mastra-network:
+  mastra-test-network:
     driver: bridge
