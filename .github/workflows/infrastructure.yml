@@ -62,11 +62,32 @@ jobs:
       env:
         TF_IN_AUTOMATION: true
 
+    - name: List Resources to be Destroyed
+      if: github.event.inputs.action == 'destroy'
+      run: |
+        cd terraform
+        echo "## 🗑️  Resources to be Destroyed" >> $GITHUB_STEP_SUMMARY
+        echo "The following resources will be permanently deleted:" >> $GITHUB_STEP_SUMMARY
+        terraform plan -destroy -no-color | grep -E "# .* will be destroyed" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY || echo "- Unable to list resources (they may already be destroyed)" >> $GITHUB_STEP_SUMMARY
+
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
+        echo "🗑️  Starting resource destruction..."
         terraform destroy -auto-approve
+
+        # Verify destruction
+        if terraform show -json | jq -e '.values.root_module.resources | length == 0' >/dev/null 2>&1; then
+          echo "✅ All resources successfully destroyed"
+          echo "## ✅ Destruction Complete" >> $GITHUB_STEP_SUMMARY
+          echo "All infrastructure resources have been successfully destroyed." >> $GITHUB_STEP_SUMMARY
+          echo "Your AWS account will no longer be charged for these resources." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️  Some resources may still exist"
+          echo "## ⚠️  Destruction Warning" >> $GITHUB_STEP_SUMMARY
+          echo "Some resources may still exist. Please check your AWS console." >> $GITHUB_STEP_SUMMARY
+        fi
       env:
         TF_IN_AUTOMATION: true
 
@@ -88,7 +109,14 @@ jobs:
         echo "::notice title=Instance IP::Instance IP is $INSTANCE_IP"
         echo "🚀 Infrastructure deployed successfully!"
         echo "✅ Infrastructure configured - no manual secrets needed"
+        # Get nameservers for setup instructions
+        NAMESERVERS=$(terraform output -json route53_info | jq -r '.name_servers | join(", ")')
+
         echo "📋 Next steps:"
-        echo "1. Create DNS A record: $DOMAIN → $INSTANCE_IP"
-        echo "2. Run 'Deploy to Lightsail' workflow to configure Nginx"
-        echo "3. Deploy your Next.js containers"
+        echo "1. Configure nameservers at your domain registrar:"
+        echo "   $NAMESERVERS"
+        echo "2. Wait for DNS propagation (5-30 minutes)"
+        echo "3. Run 'Deploy to Lightsail' workflow to deploy applications"
+        echo "4. Access your applications at http://$DOMAIN"
+        echo ""
+        echo "💡 To delete all resources later, run this workflow with action: 'destroy'"

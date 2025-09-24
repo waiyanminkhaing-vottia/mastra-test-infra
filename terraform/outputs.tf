@@ -61,7 +61,17 @@ output "dns_configuration" {
     domain            = var.domain_name
     type              = "A"
     ip_address        = aws_lightsail_static_ip.mastra_static_ip.ip_address
-    manual_setup_note = "Manually create A record: ${var.domain_name} → ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
+    auto_created      = "DNS A record created automatically in Route53"
+  }
+}
+
+output "route53_info" {
+  description = "Route53 hosted zone information"
+  value = {
+    hosted_zone_id = aws_route53_zone.demo_zone.zone_id
+    domain         = aws_route53_zone.demo_zone.name
+    name_servers   = aws_route53_zone.demo_zone.name_servers
+    setup_note     = "Configure these nameservers at your domain registrar to activate DNS"
   }
 }
 

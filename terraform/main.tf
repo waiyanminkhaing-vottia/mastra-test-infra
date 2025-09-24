@@ -93,6 +93,23 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Route53 configuration removed for development simplicity
-# You can manually create DNS records pointing to the static IP
+# Create Route53 hosted zone for demo.vottia.me
+resource "aws_route53_zone" "demo_zone" {
+  name = var.base_domain
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+# Create A record for the domain
+resource "aws_route53_record" "domain_record" {
+  zone_id = aws_route53_zone.demo_zone.zone_id
+  name    = var.domain_name
+  type    = "A"
+  ttl     = 300
+  records = [aws_lightsail_static_ip.mastra_static_ip.ip_address]
+}
 

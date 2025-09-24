@@ -58,21 +58,26 @@ Development infrastructure for deploying multiple Next.js applications using AWS
 **Option A: GitHub Actions (Recommended)**
 1. Go to Actions tab → "Manage Infrastructure"
 2. Click "Run workflow"
-3. Select action: `apply`
+3. Select action:
+   - `plan` - Preview changes without applying
+   - `apply` - Create/update infrastructure
+   - `destroy` - Delete all resources permanently
 
 **Option B: Local Deployment**
 ```bash
 cd terraform
 terraform init
-terraform plan -var="ssh_public_key=$(cat ~/.ssh/id_rsa.pub)"
-terraform apply -var="ssh_public_key=$(cat ~/.ssh/id_rsa.pub)"
+terraform plan    # Preview changes
+terraform apply   # Create infrastructure
+terraform destroy # Delete everything
 ```
 
 ### 2. Configure DNS
 
 After deployment:
-1. Note the static IP from terraform outputs
-2. Create DNS A record: `demo.vottia.me` → `your-static-ip`
+1. Note the nameservers from terraform outputs
+2. Configure nameservers at your domain registrar (e.g., Namecheap, GoDaddy)
+3. Wait 5-30 minutes for DNS propagation
 
 ### 3. Deploy Applications
 
@@ -103,6 +108,7 @@ docker ps
 - **Docker & Docker Compose**
 - **Nginx** (configured as reverse proxy)
 - **Development tools**: git, vim, htop, curl, wget, jq
+- **Route53 DNS**: Automatic hosted zone and A record creation
 
 ### Open Ports
 - **22** (SSH)
@@ -229,7 +235,8 @@ docker ps
 After deployment, you'll see these useful outputs:
 - `instance_public_ip`: Static IP address
 - `app_urls`: Direct URLs to your applications
-- `dns_configuration`: Instructions for DNS setup
+- `dns_configuration`: DNS A record information
+- `route53_info`: Hosted zone ID and nameservers for domain setup
 - `docker_ports`: Port mapping reference
 - `ssh_command`: Ready-to-use SSH command
 - `health_check_command`: Health check script command
@@ -250,6 +257,36 @@ Monthly costs (ap-northeast-1 region):
 - **Data Transfer**: 3TB included
 
 Perfect for development and testing environments.
+
+## 🗑️ Cleanup & Resource Deletion
+
+### Option A: GitHub Actions
+1. Go to Actions → "Manage Infrastructure"
+2. Click "Run workflow"
+3. Select action: `destroy`
+4. The workflow will:
+   - List all resources to be deleted
+   - Destroy all infrastructure
+   - Verify cleanup completion
+
+### Option B: Local Cleanup
+```bash
+# Interactive script with confirmations
+./scripts/cleanup-resources.sh
+
+# Or directly with Terraform
+cd terraform
+terraform destroy
+```
+
+### What Gets Deleted
+- ✅ Lightsail instance (stops all running containers)
+- ✅ Static IP address
+- ✅ SSH key pair
+- ✅ Security group rules
+- ✅ All associated data
+
+**⚠️ Warning:** Destruction is permanent and cannot be undone!
 
 ## Troubleshooting Checklist
 
