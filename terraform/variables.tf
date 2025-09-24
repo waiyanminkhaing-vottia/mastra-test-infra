@@ -26,13 +26,13 @@ variable "instance_bundle_id" {
 variable "domain_name" {
   description = "Custom domain name for the application"
   type        = string
-  default     = "test.maestra.vottia.me"
+  default     = "test.dev-maestra.vottia.me"
 }
 
 variable "base_domain" {
   description = "Base domain name (Route53 hosted zone)"
   type        = string
-  default     = "maestra.vottia.me"
+  default     = "dev-maestra.vottia.me"
 }
 
 variable "create_dns_record" {
