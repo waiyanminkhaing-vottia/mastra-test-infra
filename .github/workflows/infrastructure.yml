@@ -60,14 +60,15 @@ jobs:
         cd terraform
         # Try with existing resources first
         terraform apply -auto-approve tfplan || {
-          echo "⚠️  Apply failed, trying with existing key pair..."
+          echo "⚠️  Apply failed, trying with existing key pair and skipping Route53..."
           echo "This is normal for development if resources already exist"
-          terraform apply -auto-approve -var="use_existing_key_pair=true" || {
+          terraform apply -auto-approve -var="use_existing_key_pair=true" -var="skip_route53=true" || {
             echo "❌ Both attempts failed. Check the logs above for specific errors"
             echo "💡 For development, you might need to:"
             echo "   1. Check if resources already exist with different names"
             echo "   2. Run 'terraform destroy' and try again"
             echo "   3. Check AWS permissions"
+            echo "   4. Route53 hosted zone might not exist - set skip_route53=true"
             exit 1
           }
         }

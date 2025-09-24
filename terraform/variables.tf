@@ -52,3 +52,9 @@ variable "use_existing_key_pair" {
   type        = bool
   default     = false
 }
+
+variable "skip_route53" {
+  description = "Skip Route53 operations entirely for development"
+  type        = bool
+  default     = false
+}

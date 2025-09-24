@@ -38,7 +38,7 @@ resource "tls_private_key" "ssh_key" {
 resource "aws_lightsail_key_pair" "mastra_key" {
   count      = var.use_existing_key_pair ? 0 : 1
   name       = "${var.project_name}-key"
-  public_key = tls_private_key.ssh_key[0].public_key_openssh
+  public_key = tls_private_key.ssh_key[count.index].public_key_openssh
 
   lifecycle {
     ignore_changes = [public_key]
@@ -112,7 +112,7 @@ data "aws_availability_zones" "available" {
 
 # Create Route53 hosted zone if it doesn't exist
 resource "aws_route53_zone" "demo_zone" {
-  count = var.create_hosted_zone ? 1 : 0
+  count = !var.skip_route53 && var.create_hosted_zone ? 1 : 0
   name  = var.base_domain
 
   tags = {
@@ -128,17 +128,15 @@ resource "aws_route53_zone" "demo_zone" {
 
 # Get the hosted zone for the domain (existing or newly created)
 data "aws_route53_zone" "domain" {
-  count        = var.create_dns_record ? 1 : 0
+  count        = !var.skip_route53 && var.create_dns_record && !var.create_hosted_zone ? 1 : 0
   name         = var.base_domain
   private_zone = false
-
-  depends_on = [aws_route53_zone.demo_zone]
 }
 
 # Create A record for the subdomain
 resource "aws_route53_record" "subdomain" {
-  count           = var.create_dns_record ? 1 : 0
-  zone_id         = data.aws_route53_zone.domain[0].zone_id
+  count           = !var.skip_route53 && var.create_dns_record ? 1 : 0
+  zone_id         = var.create_hosted_zone ? aws_route53_zone.demo_zone[0].zone_id : data.aws_route53_zone.domain[0].zone_id
   name            = var.domain_name
   type            = "A"
   ttl             = 300

@@ -68,7 +68,9 @@ output "dns_configuration" {
 
 output "hosted_zone_info" {
   description = "Route53 hosted zone information"
-  value = var.create_hosted_zone ? {
+  value = var.skip_route53 ? {
+    created = "Route53 operations skipped for development"
+  } : var.create_hosted_zone && length(aws_route53_zone.demo_zone) > 0 ? {
     zone_id      = aws_route53_zone.demo_zone[0].zone_id
     name_servers = aws_route53_zone.demo_zone[0].name_servers
     domain       = aws_route53_zone.demo_zone[0].name
