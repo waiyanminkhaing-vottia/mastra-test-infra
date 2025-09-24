@@ -12,10 +12,6 @@ on:
         - plan
         - apply
         - destroy
-  push:
-    branches: [ main ]
-    paths:
-      - 'terraform/**'
 
 env:
   TF_VERSION: '1.7.0'
@@ -61,7 +57,7 @@ jobs:
       run: exit 1
 
     - name: Terraform Apply
-      if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+      if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
         terraform apply -auto-approve tfplan
@@ -78,20 +74,23 @@ jobs:
         SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
 
     - name: Output Instance Info
-      if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+      if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
         echo "## Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
         terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
 
-    - name: Update Repository Secrets
-      if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+    - name: Display Connection Info
+      if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
         INSTANCE_IP=$(terraform output -raw instance_public_ip)
-        echo "LIGHTSAIL_HOST=$INSTANCE_IP" >> $GITHUB_ENV
         echo "Instance IP: $INSTANCE_IP"
+        echo "Domain: $(terraform output -raw dns_configuration | jq -r '.domain')"
 
         echo "::notice title=Instance IP::Instance IP is $INSTANCE_IP"
-        echo "📋 Copy this IP and manually add as LIGHTSAIL_HOST secret:"
-        echo "LIGHTSAIL_USER should be set to: ubuntu"
+        echo "🚀 Infrastructure deployed successfully!"
+        echo "📋 Next steps:"
+        echo "1. Create DNS A record: test.maestra.vottia.me → $INSTANCE_IP"
+        echo "2. SSH to instance: ssh -i ~/.ssh/mastra-key ubuntu@$INSTANCE_IP"
+        echo "3. Deploy your Next.js containers"
