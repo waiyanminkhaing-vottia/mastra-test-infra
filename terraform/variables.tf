@@ -41,20 +41,4 @@ variable "create_dns_record" {
   default     = true
 }
 
-variable "create_hosted_zone" {
-  description = "Whether to create Route53 hosted zone for the base domain"
-  type        = bool
-  default     = true
-}
-
-variable "use_existing_key_pair" {
-  description = "Whether to use existing key pair instead of creating new one"
-  type        = bool
-  default     = false
-}
-
-variable "skip_route53" {
-  description = "Skip Route53 operations entirely for development"
-  type        = bool
-  default     = true
-}
+# Route53 and key pair management simplified for development
