@@ -1,0 +1,70 @@
+name: Deploy to Lightsail
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'terraform/**'
+      - '*.md'
+      - 'scripts/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+      env:
+        SSH_KNOWN_HOSTS_FILE: ~/.ssh/known_hosts
+
+
+    - name: Deploy pgvector container
+      run: |
+        ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+          # Ensure shared network exists
+          if ! docker network ls | grep -q "mastra-test-network"; then
+            docker network create mastra-test-network --driver bridge
+          fi
+
+          # Create volume if it doesn't exist
+          docker volume create postgres_data || true
+
+          # Stop existing container
+          docker stop postgres-pgvector || true
+          docker rm postgres-pgvector || true
+
+          # Pull latest image
+          docker pull pgvector/pgvector:pg17
+
+          # Run pgvector container
+          docker run -d \
+            --name postgres-pgvector \
+            --network mastra-test-network \
+            --restart unless-stopped \
+            -p 5432:5432 \
+            -e POSTGRES_DB=${{ vars.POSTGRES_DB }} \
+            -e POSTGRES_USER=${{ vars.POSTGRES_USER }} \
+            -e POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }} \
+            -e POSTGRES_MULTIPLE_DATABASES="${{ vars.POSTGRES_DB }},${{ vars.AGENT_POSTGRES_DB }}" \
+            -v postgres_data:/var/lib/postgresql/data \
+            pgvector/pgvector:pg17
+
+          # Clean up unused images
+          docker image prune -f
+        EOF
+
+    - name: Verify deployment
+      run: |
+        ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} << 'EOF'
+          docker ps | grep postgres-pgvector
+          docker logs postgres-pgvector --tail=20
+        EOF

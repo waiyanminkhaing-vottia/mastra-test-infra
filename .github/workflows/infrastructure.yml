@@ -1,0 +1,94 @@
+name: Manage Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+        - plan
+        - apply
+        - destroy
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform/**'
+
+env:
+  TF_VERSION: '1.7.0'
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TF_VERSION }}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+
+    - name: Terraform Init
+      run: |
+        cd terraform
+        terraform init
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        cd terraform
+        terraform plan -var="ssh_public_key=${{ vars.SSH_PUBLIC_KEY }}" -out=tfplan
+      continue-on-error: true
+      env:
+        TF_IN_AUTOMATION: true
+
+    - name: Terraform Plan Status
+      if: steps.plan.outcome == 'failure'
+      run: exit 1
+
+    - name: Terraform Apply
+      if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+      run: |
+        cd terraform
+        terraform apply -auto-approve tfplan
+      env:
+        TF_IN_AUTOMATION: true
+
+    - name: Terraform Destroy
+      if: github.event.inputs.action == 'destroy'
+      run: |
+        cd terraform
+        terraform destroy -auto-approve -var="ssh_public_key=${{ vars.SSH_PUBLIC_KEY }}"
+      env:
+        TF_IN_AUTOMATION: true
+
+    - name: Output Instance Info
+      if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+      run: |
+        cd terraform
+        echo "## Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
+        terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
+
+    - name: Update Repository Secrets
+      if: (github.event.inputs.action == 'apply') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+      run: |
+        cd terraform
+        INSTANCE_IP=$(terraform output -raw instance_public_ip)
+        echo "LIGHTSAIL_HOST=$INSTANCE_IP" >> $GITHUB_ENV
+        echo "Instance IP: $INSTANCE_IP"
+
+        echo "::notice title=Instance IP::Instance IP is $INSTANCE_IP"
+        echo "📋 Copy this IP and manually add as LIGHTSAIL_HOST secret:"
+        echo "LIGHTSAIL_USER should be set to: ubuntu"
