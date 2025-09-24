@@ -23,6 +23,17 @@ output "ssh_command" {
   value       = "ssh -i ~/.ssh/mastra-key ubuntu@${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
 }
 
+output "ssh_private_key" {
+  description = "SSH private key for instance access"
+  value       = tls_private_key.ssh_key.private_key_pem
+  sensitive   = true
+}
+
+output "ssh_public_key" {
+  description = "SSH public key for instance access"
+  value       = tls_private_key.ssh_key.public_key_openssh
+}
+
 output "health_check_command" {
   description = "Command to run health check on the instance"
   value       = "./scripts/check-instance-health.sh ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
@@ -45,12 +56,13 @@ output "app_urls" {
 }
 
 output "dns_configuration" {
-  description = "DNS configuration needed"
+  description = "DNS configuration"
   value = {
-    domain = var.domain_name
-    type   = "A"
-    value  = aws_lightsail_static_ip.mastra_static_ip.ip_address
-    note   = "Point ${var.domain_name} A record to this IP address"
+    domain            = var.domain_name
+    type              = "A"
+    ip_address        = aws_lightsail_static_ip.mastra_static_ip.ip_address
+    auto_created      = var.create_dns_record
+    manual_setup_note = var.create_dns_record ? "DNS A record created automatically in Route53" : "Manually create A record: ${var.domain_name} → ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
   }
 }
 

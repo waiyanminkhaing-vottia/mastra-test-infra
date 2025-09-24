@@ -45,12 +45,10 @@ jobs:
       id: plan
       run: |
         cd terraform
-        echo "Debugging: SSH_PUBLIC_KEY length: ${#SSH_PUBLIC_KEY}"
-        terraform plan -var="ssh_public_key=$SSH_PUBLIC_KEY" -out=tfplan
+        terraform plan -out=tfplan
       continue-on-error: true
       env:
         TF_IN_AUTOMATION: true
-        SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
 
     - name: Terraform Plan Status
       if: steps.plan.outcome == 'failure'
@@ -68,10 +66,9 @@ jobs:
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
-        terraform destroy -auto-approve -var="ssh_public_key=$SSH_PUBLIC_KEY"
+        terraform destroy -auto-approve
       env:
         TF_IN_AUTOMATION: true
-        SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
 
     - name: Output Instance Info
       if: github.event.inputs.action == 'apply'
@@ -88,6 +85,7 @@ jobs:
         cd terraform
         INSTANCE_IP=$(terraform output -raw instance_public_ip)
         DOMAIN=$(terraform output -json dns_configuration | jq -r '.domain')
+        SSH_PRIVATE_KEY=$(terraform output -raw ssh_private_key)
 
         # Create LIGHTSAIL_HOST secret
         echo "$INSTANCE_IP" | gh secret set LIGHTSAIL_HOST
@@ -95,9 +93,13 @@ jobs:
         # Create LIGHTSAIL_USER secret
         echo "ubuntu" | gh secret set LIGHTSAIL_USER
 
+        # Create SSH private key secret
+        echo "$SSH_PRIVATE_KEY" | gh secret set LIGHTSAIL_SSH_KEY
+
         echo "✅ Created GitHub secrets:"
         echo "- LIGHTSAIL_HOST: $INSTANCE_IP"
         echo "- LIGHTSAIL_USER: ubuntu"
+        echo "- LIGHTSAIL_SSH_KEY: [SSH private key created]"
 
     - name: Display Connection Info
       if: github.event.inputs.action == 'apply'

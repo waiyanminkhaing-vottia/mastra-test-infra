@@ -22,13 +22,21 @@ variable "instance_bundle_id" {
   default     = "medium_2_0"
 }
 
-variable "ssh_public_key" {
-  description = "SSH public key for instance access"
-  type        = string
-}
 
 variable "domain_name" {
   description = "Custom domain name for the application"
   type        = string
   default     = "test.maestra.vottia.me"
+}
+
+variable "base_domain" {
+  description = "Base domain name (Route53 hosted zone)"
+  type        = string
+  default     = "maestra.vottia.me"
+}
+
+variable "create_dns_record" {
+  description = "Whether to create DNS A record automatically (requires Route53 hosted zone)"
+  type        = bool
+  default     = true
 }

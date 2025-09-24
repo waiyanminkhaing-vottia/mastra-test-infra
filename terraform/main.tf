@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
   required_version = ">= 1.0"
 }
@@ -13,10 +17,16 @@ provider "aws" {
 }
 
 
-# Create a key pair for the instance
+# Generate SSH key pair
+resource "tls_private_key" "ssh_key" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+# Create a key pair for the instance using generated key
 resource "aws_lightsail_key_pair" "mastra_key" {
   name       = "${var.project_name}-key"
-  public_key = var.ssh_public_key
+  public_key = tls_private_key.ssh_key.public_key_openssh
 }
 
 # Create the Lightsail instance
@@ -78,5 +88,22 @@ resource "aws_lightsail_static_ip_attachment" "mastra_static_ip_attachment" {
 # Data source for availability zones
 data "aws_availability_zones" "available" {
   state = "available"
+}
+
+# Get the hosted zone for the domain (if it exists in Route53)
+data "aws_route53_zone" "domain" {
+  count        = var.create_dns_record ? 1 : 0
+  name         = var.base_domain
+  private_zone = false
+}
+
+# Create A record for the subdomain
+resource "aws_route53_record" "subdomain" {
+  count   = var.create_dns_record ? 1 : 0
+  zone_id = data.aws_route53_zone.domain[0].zone_id
+  name    = var.domain_name
+  type    = "A"
+  ttl     = 300
+  records = [aws_lightsail_static_ip.mastra_static_ip.ip_address]
 }
 
