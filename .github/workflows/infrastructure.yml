@@ -91,14 +91,14 @@ jobs:
         echo "$INSTANCE_IP" | gh secret set LIGHTSAIL_HOST
 
         # Create LIGHTSAIL_USER secret
-        echo "ubuntu" | gh secret set LIGHTSAIL_USER
+        echo "ec2-user" | gh secret set LIGHTSAIL_USER
 
         # Create SSH private key secret
         echo "$SSH_PRIVATE_KEY" | gh secret set LIGHTSAIL_SSH_KEY
 
         echo "✅ Created GitHub secrets:"
         echo "- LIGHTSAIL_HOST: $INSTANCE_IP"
-        echo "- LIGHTSAIL_USER: ubuntu"
+        echo "- LIGHTSAIL_USER: ec2-user"
         echo "- LIGHTSAIL_SSH_KEY: [SSH private key created]"
 
     - name: Display Connection Info

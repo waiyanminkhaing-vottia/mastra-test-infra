@@ -42,7 +42,7 @@ resource "aws_lightsail_key_pair" "mastra_key" {
 resource "aws_lightsail_instance" "mastra_instance" {
   name              = "${var.project_name}-instance"
   availability_zone = data.aws_availability_zones.available.names[0]
-  blueprint_id      = "ubuntu_22_04"
+  blueprint_id      = "amazon_linux_2023"
   bundle_id         = var.instance_bundle_id
   key_pair_name     = aws_lightsail_key_pair.mastra_key.name
   user_data         = file("${path.module}/user_data.sh")
