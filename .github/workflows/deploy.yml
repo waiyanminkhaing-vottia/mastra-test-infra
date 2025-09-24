@@ -1,12 +1,6 @@
 name: Deploy to Lightsail
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - 'terraform/**'
-      - '*.md'
-      - 'scripts/**'
   workflow_dispatch:
 
 jobs:
