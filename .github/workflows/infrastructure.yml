@@ -80,17 +80,36 @@ jobs:
         echo "## Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
         terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
 
+    - name: Create GitHub Secrets for Deploy Workflow
+      if: github.event.inputs.action == 'apply'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        cd terraform
+        INSTANCE_IP=$(terraform output -raw instance_public_ip)
+        DOMAIN=$(terraform output -json dns_configuration | jq -r '.domain')
+
+        # Create LIGHTSAIL_HOST secret
+        echo "$INSTANCE_IP" | gh secret set LIGHTSAIL_HOST
+
+        # Create LIGHTSAIL_USER secret
+        echo "ubuntu" | gh secret set LIGHTSAIL_USER
+
+        echo "✅ Created GitHub secrets:"
+        echo "- LIGHTSAIL_HOST: $INSTANCE_IP"
+        echo "- LIGHTSAIL_USER: ubuntu"
+
     - name: Display Connection Info
       if: github.event.inputs.action == 'apply'
       run: |
         cd terraform
         INSTANCE_IP=$(terraform output -raw instance_public_ip)
-        echo "Instance IP: $INSTANCE_IP"
-        echo "Domain: $(terraform output -raw dns_configuration | jq -r '.domain')"
+        DOMAIN=$(terraform output -json dns_configuration | jq -r '.domain')
 
         echo "::notice title=Instance IP::Instance IP is $INSTANCE_IP"
         echo "🚀 Infrastructure deployed successfully!"
+        echo "✅ GitHub secrets automatically created for deploy workflow"
         echo "📋 Next steps:"
-        echo "1. Create DNS A record: test.maestra.vottia.me → $INSTANCE_IP"
-        echo "2. SSH to instance: ssh -i ~/.ssh/mastra-key ubuntu@$INSTANCE_IP"
+        echo "1. Create DNS A record: $DOMAIN → $INSTANCE_IP"
+        echo "2. Run 'Deploy to Lightsail' workflow to configure Nginx"
         echo "3. Deploy your Next.js containers"
