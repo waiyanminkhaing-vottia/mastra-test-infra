@@ -28,9 +28,20 @@ jobs:
         cd terraform
         terraform init
 
-        # Import existing resources if they exist (ignore errors if already imported)
-        terraform import aws_lightsail_static_ip.mastra_static_ip "dev-mastra-test-static-ip" 2>/dev/null || true
-        terraform import aws_lightsail_key_pair.mastra_key "dev-mastra-test-key" 2>/dev/null || true
+        # Clean up any existing resources that might conflict
+        echo "Cleaning up existing conflicting resources..."
+
+        # Delete existing static IP if it exists
+        aws lightsail release-static-ip --static-ip-name "dev-mastra-test-static-ip" --region ap-northeast-1 || echo "Static IP doesn't exist or already deleted"
+
+        # Delete existing key pair if it exists
+        aws lightsail delete-key-pair --key-pair-name "dev-mastra-test-key" --region ap-northeast-1 || echo "Key pair doesn't exist or already deleted"
+
+        # Delete existing instance if it exists
+        aws lightsail delete-instance --instance-name "dev-mastra-test-instance" --region ap-northeast-1 || echo "Instance doesn't exist or already deleted"
+
+        # Wait a moment for deletions to complete
+        sleep 10
 
         # Check what resources exist in state
         echo "Current Terraform state:"
