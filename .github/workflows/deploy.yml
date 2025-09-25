@@ -65,12 +65,13 @@ jobs:
         echo "Host: $LIGHTSAIL_HOST"
         echo "User: $LIGHTSAIL_USER"
 
-        echo "Setting up SSH with GitHub Secret..."
-        # Setup SSH using GitHub Secret
+        echo "Setting up SSH with Terraform-generated key..."
+        # Setup SSH using Terraform-generated key (guaranteed to match the instance)
         mkdir -p ~/.ssh
 
-        # Setup SSH key from GitHub Secret
-        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+        # Setup SSH key from Terraform output
+        LIGHTSAIL_SSH_KEY=$(terraform output -raw ssh_private_key)
+        echo "$LIGHTSAIL_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
         echo "Validating SSH key..."
@@ -99,7 +100,14 @@ jobs:
         echo "Host: $LIGHTSAIL_HOST"
         echo "Domain: test.dev-maestra.vottia.me"
         echo "User: ec2-user"
-        echo "SSH key is stored in GitHub Secret: LIGHTSAIL_SSH_KEY"
+        echo ""
+        echo "To SSH manually, save the following private key to ~/.ssh/lightsail-key.pem:"
+        echo "----------------------------------------"
+        echo "$LIGHTSAIL_SSH_KEY"
+        echo "----------------------------------------"
+        echo "Then run:"
+        echo "chmod 600 ~/.ssh/lightsail-key.pem"
+        echo "ssh -i ~/.ssh/lightsail-key.pem ec2-user@test.dev-maestra.vottia.me"
 
     - name: Deploy pgvector container
       run: |
