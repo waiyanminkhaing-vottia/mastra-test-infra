@@ -99,13 +99,27 @@ jobs:
     - name: Deploy pgvector container
       run: |
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
-          # Check if Docker is available
-          if ! sudo docker --version >/dev/null 2>&1; then
-            echo "❌ Docker not available, checking setup status..."
-            cat /home/ec2-user/setup.log | tail -20
-            exit 1
+          # Check if Docker service is running
+          echo "Checking Docker service status..."
+          sudo systemctl status docker --no-pager || echo "Docker service status check failed"
+
+          echo "Checking if Docker daemon is responding..."
+          if sudo docker info >/dev/null 2>&1; then
+            echo "✅ Docker is available and responding"
+            sudo docker --version
           else
-            echo "✅ Docker is available: $(sudo docker --version)"
+            echo "❌ Docker daemon not responding, checking setup status..."
+            echo "=== Setup log (last 30 lines) ==="
+            tail -30 /home/ec2-user/setup.log 2>/dev/null || echo "Setup log not found"
+            echo "=== Trying to start Docker service ==="
+            sudo systemctl start docker || echo "Failed to start Docker"
+            sleep 5
+            if sudo docker info >/dev/null 2>&1; then
+              echo "✅ Docker started successfully"
+            else
+              echo "❌ Docker still not responding after restart attempt"
+              exit 1
+            fi
           fi
 
           # Ensure shared network exists
