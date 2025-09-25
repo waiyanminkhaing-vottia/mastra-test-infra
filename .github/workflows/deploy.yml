@@ -53,25 +53,24 @@ jobs:
         terraform plan -out=tfplan
         terraform apply -auto-approve tfplan
 
-    - name: Setup SSH from Terraform outputs
+    - name: Setup SSH with GitHub Secret
       run: |
         cd terraform
 
         echo "Getting Terraform outputs..."
-        # Get values from Terraform outputs
+        # Get host IP from Terraform outputs
         LIGHTSAIL_HOST=$(terraform output -raw instance_public_ip)
-        LIGHTSAIL_SSH_KEY=$(terraform output -raw ssh_private_key)
         LIGHTSAIL_USER="ec2-user"
 
         echo "Host: $LIGHTSAIL_HOST"
         echo "User: $LIGHTSAIL_USER"
 
-        echo "Setting up SSH..."
-        # Setup SSH
+        echo "Setting up SSH with GitHub Secret..."
+        # Setup SSH using GitHub Secret
         mkdir -p ~/.ssh
 
-        # Setup SSH key from Terraform output with proper formatting
-        echo "$LIGHTSAIL_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+        # Setup SSH key from GitHub Secret
+        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
         echo "Validating SSH key..."
@@ -95,6 +94,12 @@ jobs:
         echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
 
         echo "SSH setup completed successfully"
+
+        echo "=== Manual SSH Access Info ==="
+        echo "Host: $LIGHTSAIL_HOST"
+        echo "Domain: test.dev-maestra.vottia.me"
+        echo "User: ec2-user"
+        echo "SSH key is stored in GitHub Secret: LIGHTSAIL_SSH_KEY"
 
     - name: Deploy pgvector container
       run: |
