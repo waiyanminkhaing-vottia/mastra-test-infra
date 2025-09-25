@@ -81,6 +81,13 @@ jobs:
     - name: Deploy pgvector container
       run: |
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
+          # Check if Docker is available
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "❌ Docker not found, checking setup status..."
+            cat /home/ec2-user/setup.log | tail -20
+            exit 1
+          fi
+
           # Ensure shared network exists
           if ! sudo docker network ls | grep -q "mastra-test-network"; then
             sudo docker network create mastra-test-network --driver bridge
