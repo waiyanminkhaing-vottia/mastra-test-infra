@@ -27,7 +27,20 @@ jobs:
       run: |
         cd terraform
 
+        echo "Initializing Terraform state..."
+        terraform init
+
+        echo "Refreshing Terraform state to get current infrastructure..."
+        terraform refresh
+
         echo "Getting Terraform outputs..."
+        # Check if outputs exist
+        if ! terraform output >/dev/null 2>&1; then
+          echo "❌ No Terraform outputs found - infrastructure may not be deployed"
+          echo "Please run the 'Manage Infrastructure' workflow with 'apply' action first"
+          exit 1
+        fi
+
         # Get host IP from Terraform outputs
         LIGHTSAIL_HOST=$(terraform output -raw instance_public_ip)
         LIGHTSAIL_USER="ec2-user"
