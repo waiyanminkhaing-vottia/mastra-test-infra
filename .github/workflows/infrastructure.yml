@@ -74,10 +74,15 @@ jobs:
       run: |
         cd terraform
         echo "🗑️ Destroying infrastructure..."
-        echo "Refreshing Terraform state..."
-        terraform refresh -auto-approve || echo "State refresh completed with warnings"
-        echo "Listing current resources in state..."
-        terraform state list || echo "No resources in state"
+        echo "Checking Terraform state..."
+        if [ -f terraform.tfstate ]; then
+          echo "State file exists, refreshing state..."
+          terraform refresh || echo "State refresh completed with warnings"
+          echo "Listing current resources in state..."
+          terraform state list || echo "No resources in state"
+        else
+          echo "⚠️ No state file found - resources may need manual cleanup"
+        fi
         terraform destroy -auto-approve
         echo "✅ Infrastructure destroyed"
       env:
