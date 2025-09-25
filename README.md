@@ -1,6 +1,6 @@
 # Mastra Test Infrastructure
 
-Development infrastructure for deploying multiple Next.js applications using AWS Lightsail with Nginx reverse proxy.
+Development infrastructure for Mastra test environment using AWS Lightsail and Terraform with proper development workflows and SSH key management.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Development infrastructure for deploying multiple Next.js applications using AWS
 ┌─────────────────────────────────────────────────┐
 │                AWS Lightsail                    │
 │  ┌─────────────────────────────────────────┐   │
-│  │            Ubuntu Instance               │   │
+│  │        Amazon Linux 2023 Instance       │   │
 │  │                                         │   │
 │  │  ┌─────────────────────────────────┐   │   │
 │  │  │            Nginx                │   │   │
@@ -41,27 +41,45 @@ Development infrastructure for deploying multiple Next.js applications using AWS
 | `http://demo.vottia.me/sanden` | 3001 | Sanden App |
 | `http://demo.vottia.me/health` | - | Health Check Endpoint |
 
-## Prerequisites
+## 🚀 Quick Start for Development
 
-1. **AWS Account** with appropriate permissions
-2. **SSH Key Pair** for instance access
-3. **GitHub Repository Secrets/Variables**:
-   - `AWS_ACCESS_KEY_ID` (secret)
-   - `AWS_SECRET_ACCESS_KEY` (secret)
-   - `SSH_PUBLIC_KEY` (variable) - Your public key content
-   - `AWS_REGION` (variable, optional - defaults to ap-northeast-1)
+### Prerequisites
+- [Terraform](https://terraform.io) >= 1.0
+- [AWS CLI](https://aws.amazon.com/cli/)
+- [GitHub CLI](https://cli.github.com/) (optional, for automated setup)
+- AWS account with Lightsail access
 
-## Quick Start
+### 1. Development Setup
 
-### 1. Deploy Infrastructure
+Run the automated setup script:
+```bash
+./scripts/setup-dev.sh
+```
+
+This will guide you through:
+- Setting up GitHub secrets and variables
+- Configuring the development environment
+- Explaining the deployment process
+
+### 2. GitHub Repository Configuration
+
+**Secrets** (Settings > Secrets and variables > Actions):
+- `AWS_ACCESS_KEY_ID` - Your AWS access key ID
+- `AWS_SECRET_ACCESS_KEY` - Your AWS secret access key
+- `POSTGRES_PASSWORD` - Password for PostgreSQL database
+
+**Variables**:
+- `AWS_REGION` - AWS region (default: ap-northeast-1)
+- `POSTGRES_DB` - Main PostgreSQL database name
+- `POSTGRES_USER` - PostgreSQL username
+- `AGENT_POSTGRES_DB` - Agent PostgreSQL database name
+
+### 3. Deploy Infrastructure
 
 **Option A: GitHub Actions (Recommended)**
-1. Go to Actions tab → "Manage Infrastructure"
+1. Go to Actions tab → "Deploy to Lightsail"
 2. Click "Run workflow"
-3. Select action:
-   - `plan` - Preview changes without applying
-   - `apply` - Create/update infrastructure
-   - `destroy` - Delete all resources permanently
+3. Infrastructure will be created with environment-based naming (dev-mastra-test-*)
 
 **Option B: Local Deployment**
 ```bash
@@ -71,6 +89,19 @@ terraform plan    # Preview changes
 terraform apply   # Create infrastructure
 terraform destroy # Delete everything
 ```
+
+### 4. Get SSH Access
+
+After deployment, copy SSH keys to another repository for team access:
+```bash
+./scripts/copy-keys-to-repo.sh /path/to/another/repo dev
+```
+
+This creates:
+- `keys/dev/dev-mastra-test-private-key.pem` - SSH private key
+- `keys/dev/dev-mastra-test-public-key.pub` - SSH public key
+- `keys/dev/dev-connection-info.txt` - Connection instructions
+- `keys/README.md` - Usage documentation
 
 ### 2. Configure DNS
 
@@ -194,19 +225,31 @@ Add the new route to the URL routing table above.
 ## Monitoring & Debugging
 
 ### Health Checks
+
+**Quick Health Check:**
 ```bash
-# Application health
+# Check all services automatically
+./scripts/quick-check.sh
+```
+
+**Comprehensive Service Check:**
+```bash
+# Detailed check with instance IP and SSH key
+./scripts/check-services.sh <INSTANCE_IP> [ssh-key-path]
+
+# Or let it auto-detect from Terraform
+./scripts/check-services.sh
+```
+
+**Manual Checks:**
+```bash
+# Application health endpoint
 curl http://demo.vottia.me/health
 
-# Instance health check (comprehensive)
-./scripts/check-instance-health.sh <INSTANCE_IP>
-
-# Manual instance setup (if needed)
-./scripts/setup-instance.sh <INSTANCE_IP>
-
 # On the instance directly:
-sudo systemctl status nginx
-docker ps
+sudo systemctl status nginx docker
+sudo docker ps
+sudo nginx -t
 ```
 
 ### Log Files

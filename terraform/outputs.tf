@@ -1,6 +1,6 @@
 output "instance_public_ip" {
   description = "Public IP address of the Lightsail instance"
-  value       = data.aws_lightsail_static_ip.existing_static_ip.ip_address
+  value       = aws_lightsail_static_ip.mastra_static_ip.ip_address
 }
 
 output "instance_private_ip" {
@@ -15,12 +15,12 @@ output "instance_name" {
 
 output "static_ip_name" {
   description = "Name of the static IP"
-  value       = data.aws_lightsail_static_ip.existing_static_ip.name
+  value       = aws_lightsail_static_ip.mastra_static_ip.name
 }
 
 output "ssh_command" {
   description = "SSH command to connect to the instance"
-  value       = "ssh -i ~/.ssh/mastra-key ec2-user@${data.aws_lightsail_static_ip.existing_static_ip.ip_address}"
+  value       = "ssh -i ~/.ssh/mastra-key ec2-user@${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
 }
 
 output "ssh_private_key" {
@@ -36,19 +36,19 @@ output "ssh_public_key" {
 
 output "health_check_command" {
   description = "Command to run health check on the instance"
-  value       = "./scripts/check-instance-health.sh ${data.aws_lightsail_static_ip.existing_static_ip.ip_address}"
+  value       = "./scripts/check-instance-health.sh ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
 }
 
 output "setup_command" {
   description = "Command to manually setup the instance if needed"
-  value       = "./scripts/setup-instance.sh ${data.aws_lightsail_static_ip.existing_static_ip.ip_address}"
+  value       = "./scripts/setup-instance.sh ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
 }
 
 output "app_urls" {
   description = "Application URLs"
   value = {
-    main_app_ip     = "http://${data.aws_lightsail_static_ip.existing_static_ip.ip_address}"
-    sanden_app_ip   = "http://${data.aws_lightsail_static_ip.existing_static_ip.ip_address}/sanden"
+    main_app_ip     = "http://${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
+    sanden_app_ip   = "http://${aws_lightsail_static_ip.mastra_static_ip.ip_address}/sanden"
     main_app_domain = "http://${var.domain_name}"
     sanden_app_domain = "http://${var.domain_name}/sanden"
     health_check    = "http://${var.domain_name}/health"
@@ -60,7 +60,7 @@ output "dns_configuration" {
   value = {
     domain            = var.domain_name
     type              = "A"
-    ip_address        = data.aws_lightsail_static_ip.existing_static_ip.ip_address
+    ip_address        = aws_lightsail_static_ip.mastra_static_ip.ip_address
     auto_created      = "DNS A record created automatically in Route53"
   }
 }

@@ -14,6 +14,11 @@ variable "environment" {
   description = "Environment (dev, staging, prod)"
   type        = string
   default     = "dev"
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "Environment must be one of: dev, staging, prod."
+  }
 }
 
 variable "instance_bundle_id" {
@@ -27,6 +32,11 @@ variable "domain_name" {
   description = "Custom domain name for the application"
   type        = string
   default     = "demo.vottia.me"
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\\.[a-zA-Z]{2,}$", var.domain_name))
+    error_message = "Domain name must be a valid domain format."
+  }
 }
 
 variable "base_domain" {

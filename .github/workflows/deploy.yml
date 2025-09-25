@@ -28,11 +28,25 @@ jobs:
         cd terraform
         terraform init
 
-        # Use timestamp to create unique resource names
-        TIMESTAMP=$(date +%s)
+        # Import existing resources if they exist (using dev environment)
+        terraform import aws_lightsail_static_ip.mastra_static_ip dev-mastra-test-static-ip || echo "Static IP already imported or doesn't exist"
+        terraform import aws_lightsail_key_pair.mastra_key dev-mastra-test-key || echo "Key pair already imported or doesn't exist"
 
-        terraform plan -var="project_name=mastra-test-$TIMESTAMP" -out=tfplan
-        terraform apply tfplan
+        # Run terraform plan and check for errors
+        if terraform plan -out=tfplan; then
+          echo "✅ Terraform plan successful"
+        else
+          echo "❌ Terraform plan failed"
+          exit 1
+        fi
+
+        # Apply terraform changes
+        if terraform apply tfplan; then
+          echo "✅ Terraform apply successful"
+        else
+          echo "❌ Terraform apply failed"
+          exit 1
+        fi
 
     - name: Setup SSH from Terraform outputs
       run: |
@@ -69,6 +83,24 @@ jobs:
         echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
         echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
 
+    - name: Save SSH keys for development
+      run: |
+        cd terraform
+
+        # Get SSH keys from Terraform outputs
+        PRIVATE_KEY=$(terraform output -raw ssh_private_key)
+        PUBLIC_KEY=$(terraform output -raw ssh_public_key)
+
+        # Save keys to files for potential copying to another repo
+        echo "$PRIVATE_KEY" > /tmp/dev-mastra-test-private-key.pem
+        echo "$PUBLIC_KEY" > /tmp/dev-mastra-test-public-key.pub
+        chmod 600 /tmp/dev-mastra-test-private-key.pem
+        chmod 644 /tmp/dev-mastra-test-public-key.pub
+
+        echo "SSH keys saved:"
+        echo "Private key: /tmp/dev-mastra-test-private-key.pem"
+        echo "Public key: /tmp/dev-mastra-test-public-key.pub"
+        echo "SSH command: ssh -i /tmp/dev-mastra-test-private-key.pem ec2-user@$LIGHTSAIL_HOST"
 
     - name: Deploy pgvector container
       run: |
@@ -110,4 +142,64 @@ jobs:
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
           sudo docker ps | grep postgres-pgvector
           sudo docker logs postgres-pgvector --tail=20
+        EOF
+
+    - name: Check Nginx and Docker services
+      run: |
+        ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
+          echo "=== System Services Health Check ==="
+
+          # Check Docker
+          echo "Docker Status:"
+          if command -v docker >/dev/null 2>&1; then
+            echo "✅ Docker installed: $(docker --version)"
+            if sudo systemctl is-active docker >/dev/null; then
+              echo "✅ Docker service: active"
+              echo "✅ Docker containers:"
+              sudo docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || echo "No containers running"
+            else
+              echo "❌ Docker service: inactive"
+            fi
+          else
+            echo "❌ Docker not installed"
+          fi
+
+          echo ""
+          # Check Nginx
+          echo "Nginx Status:"
+          if command -v nginx >/dev/null 2>&1; then
+            echo "✅ Nginx installed: $(nginx -v 2>&1)"
+            if sudo systemctl is-active nginx >/dev/null; then
+              echo "✅ Nginx service: active"
+              echo "✅ Nginx configuration test:"
+              sudo nginx -t
+              echo "✅ Listening ports:"
+              sudo netstat -tlnp | grep nginx || echo "No nginx processes found"
+            else
+              echo "❌ Nginx service: inactive"
+            fi
+          else
+            echo "❌ Nginx not installed"
+          fi
+
+          echo ""
+          # Test health endpoint
+          echo "Health Endpoint Test:"
+          if curl -s --connect-timeout 5 localhost/health | grep -q "healthy"; then
+            echo "✅ Health endpoint responding"
+          else
+            echo "⚠️  Health endpoint not responding"
+          fi
+
+          echo ""
+          # Check setup completion
+          if [ -f /home/ec2-user/.setup-completed ]; then
+            echo "✅ Instance setup completed at: $(cat /home/ec2-user/.setup-completed)"
+          else
+            echo "⚠️  Setup may still be in progress"
+            if [ -f /home/ec2-user/setup.log ]; then
+              echo "Last 3 lines of setup log:"
+              tail -3 /home/ec2-user/setup.log
+            fi
+          fi
         EOF

@@ -2,11 +2,11 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 5.30.0"
     }
     tls = {
       source  = "hashicorp/tls"
-      version = "~> 4.0"
+      version = "~> 4.0.4"
     }
   }
   required_version = ">= 1.0"
@@ -22,15 +22,15 @@ resource "tls_private_key" "ssh_key" {
   rsa_bits  = 4096
 }
 
-# Create a key pair for the instance
+# Import existing key pair for the instance
 resource "aws_lightsail_key_pair" "mastra_key" {
-  name       = "${var.project_name}-key"
+  name       = "${var.environment}-${var.project_name}-key"
   public_key = tls_private_key.ssh_key.public_key_openssh
 }
 
 # Create the Lightsail instance
 resource "aws_lightsail_instance" "mastra_instance" {
-  name              = "${var.project_name}-instance"
+  name              = "${var.environment}-${var.project_name}-instance"
   availability_zone = data.aws_availability_zones.available.names[0]
   blueprint_id      = "amazon_linux_2023"
   bundle_id         = var.instance_bundle_id
@@ -73,14 +73,18 @@ resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
   }
 }
 
-# Use existing static IP
-data "aws_lightsail_static_ip" "existing_static_ip" {
-  name = "mastra-test-static-ip"
+# Use existing static IP (will be imported)
+resource "aws_lightsail_static_ip" "mastra_static_ip" {
+  name = "${var.environment}-${var.project_name}-static-ip"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Attach existing static IP to instance
 resource "aws_lightsail_static_ip_attachment" "mastra_static_ip_attachment" {
-  static_ip_name = data.aws_lightsail_static_ip.existing_static_ip.id
+  static_ip_name = aws_lightsail_static_ip.mastra_static_ip.id
   instance_name  = aws_lightsail_instance.mastra_instance.id
 }
 
@@ -106,6 +110,6 @@ resource "aws_route53_record" "domain_record" {
   name    = var.domain_name
   type    = "A"
   ttl     = 300
-  records = [data.aws_lightsail_static_ip.existing_static_ip.ip_address]
+  records = [aws_lightsail_static_ip.mastra_static_ip.ip_address]
 }
 
