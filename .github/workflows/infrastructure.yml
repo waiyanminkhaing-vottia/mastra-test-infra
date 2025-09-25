@@ -63,75 +63,13 @@ jobs:
       env:
         TF_IN_AUTOMATION: true
 
-    - name: List Resources to be Destroyed
-      if: github.event.inputs.action == 'destroy'
-      run: |
-        cd terraform
-        echo "## 🗑️  Resources to be Destroyed" >> $GITHUB_STEP_SUMMARY
-        echo "The following resources will be permanently deleted:" >> $GITHUB_STEP_SUMMARY
-        terraform plan -destroy -no-color | grep -E "# .* will be destroyed" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY || echo "- Unable to list resources (they may already be destroyed)" >> $GITHUB_STEP_SUMMARY
-
     - name: Terraform Destroy
       if: github.event.inputs.action == 'destroy'
       run: |
         cd terraform
-        echo "🗑️  Starting resource destruction..."
-
-        # First, try terraform destroy
+        echo "🗑️ Destroying infrastructure..."
         terraform destroy -auto-approve
-
-        # Clean up any remaining resources that might not be in terraform state
-        echo "🧹 Cleaning up any remaining resources..."
-
-        # Remove any static IPs not managed by terraform
-        STATIC_IP_NAME="dev-mastra-test-static-ip"
-        if aws lightsail get-static-ip --static-ip-name "$STATIC_IP_NAME" --region ap-northeast-1 >/dev/null 2>&1; then
-          echo "Deleting static IP: $STATIC_IP_NAME"
-          aws lightsail release-static-ip --static-ip-name "$STATIC_IP_NAME" --region ap-northeast-1 || echo "Failed to delete static IP"
-        fi
-
-        # Remove any key pairs not managed by terraform
-        KEY_PAIR_NAME="dev-mastra-test-key"
-        if aws lightsail get-key-pair --key-pair-name "$KEY_PAIR_NAME" --region ap-northeast-1 >/dev/null 2>&1; then
-          echo "Deleting key pair: $KEY_PAIR_NAME"
-          aws lightsail delete-key-pair --key-pair-name "$KEY_PAIR_NAME" --region ap-northeast-1 || echo "Failed to delete key pair"
-        fi
-
-        # Remove any instances not managed by terraform
-        INSTANCE_NAME="dev-mastra-test-instance"
-        if aws lightsail get-instance --instance-name "$INSTANCE_NAME" --region ap-northeast-1 >/dev/null 2>&1; then
-          echo "Deleting instance: $INSTANCE_NAME"
-          aws lightsail delete-instance --instance-name "$INSTANCE_NAME" --region ap-northeast-1 || echo "Failed to delete instance"
-        fi
-
-        # Clean up Route53 hosted zones for the domain
-        DOMAIN_NAME="demo.vottia.me"
-        HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name "$DOMAIN_NAME" --query "HostedZones[?Name=='${DOMAIN_NAME}.'].Id" --output text 2>/dev/null || echo "")
-        if [ ! -z "$HOSTED_ZONE_ID" ] && [ "$HOSTED_ZONE_ID" != "None" ]; then
-          echo "Deleting Route53 hosted zone: $HOSTED_ZONE_ID"
-          # First delete all records except NS and SOA
-          aws route53 list-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" --query "ResourceRecordSets[?Type!='NS' && Type!='SOA'].{Name:Name,Type:Type,TTL:TTL,ResourceRecords:ResourceRecords}" --output json > /tmp/records.json 2>/dev/null || echo "No records to delete"
-          if [ -s /tmp/records.json ]; then
-            for record in $(cat /tmp/records.json | jq -r '.[] | @base64'); do
-              record_data=$(echo "$record" | base64 --decode)
-              aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" --change-batch "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":$record_data}]}" || echo "Failed to delete record"
-            done
-          fi
-          # Delete the hosted zone
-          aws route53 delete-hosted-zone --id "$HOSTED_ZONE_ID" || echo "Failed to delete hosted zone"
-        fi
-
-        # Verify destruction
-        if terraform show -json | jq -e '.values.root_module.resources | length == 0' >/dev/null 2>&1; then
-          echo "✅ All resources successfully destroyed"
-          echo "## ✅ Destruction Complete" >> $GITHUB_STEP_SUMMARY
-          echo "All infrastructure resources have been successfully destroyed." >> $GITHUB_STEP_SUMMARY
-          echo "Your AWS account will no longer be charged for these resources." >> $GITHUB_STEP_SUMMARY
-        else
-          echo "⚠️  Some resources may still exist in terraform state"
-          echo "## ⚠️  Destruction Warning" >> $GITHUB_STEP_SUMMARY
-          echo "Some resources may still exist. Please check your AWS console." >> $GITHUB_STEP_SUMMARY
-        fi
+        echo "✅ Infrastructure destroyed"
       env:
         TF_IN_AUTOMATION: true
 

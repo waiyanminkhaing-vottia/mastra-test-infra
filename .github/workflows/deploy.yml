@@ -11,23 +11,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_wrapper: false
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
-
     - name: Setup SSH for deployment
       run: |
-        echo "Setting up SSH connection to existing infrastructure..."
+        echo "Setting up SSH connection..."
 
-        # Use domain name directly (infrastructure already exists)
+        # Set connection details
         LIGHTSAIL_HOST="test.dev-maestra.vottia.me"
         LIGHTSAIL_USER="ec2-user"
 
@@ -38,88 +26,34 @@ jobs:
         echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
         echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
 
-        # Setup SSH using GitHub Secret
+        # Setup SSH key
         mkdir -p ~/.ssh
         echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
-        echo "Validating SSH key..."
-        # Validate SSH key format
-        ssh-keygen -l -f ~/.ssh/id_rsa
-
-        echo "Adding host to known_hosts..."
+        # Add host to known_hosts and test connection
         ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts
-
-        echo "Testing SSH connection..."
-        # Test SSH connection
-        if ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no $LIGHTSAIL_USER@$LIGHTSAIL_HOST "echo 'SSH connection successful'"; then
-          echo "✅ SSH connection test passed"
-        else
-          echo "❌ SSH connection test failed"
-          exit 1
-        fi
-
-        # Export for later steps
-        echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
-        echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
-
-        echo "SSH setup completed successfully"
-
-        echo "=== Manual SSH Access Info ==="
-        echo "Host: $LIGHTSAIL_HOST"
-        echo "Domain: test.dev-maestra.vottia.me"
-        echo "User: ec2-user"
-        echo ""
-        echo "To SSH manually, save the following private key to ~/.ssh/lightsail-key.pem:"
-        echo "----------------------------------------"
-        echo "$LIGHTSAIL_SSH_KEY"
-        echo "----------------------------------------"
-        echo "Then run:"
-        echo "chmod 600 ~/.ssh/lightsail-key.pem"
-        echo "ssh -i ~/.ssh/lightsail-key.pem ec2-user@test.dev-maestra.vottia.me"
+        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no $LIGHTSAIL_USER@$LIGHTSAIL_HOST "echo 'SSH connection successful'"
 
     - name: Deploy pgvector container
       run: |
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
-          # Check if Docker service is running
-          echo "Checking Docker service status..."
-          sudo systemctl status docker --no-pager || echo "Docker service status check failed"
-
-          echo "Checking if Docker daemon is responding..."
-          if sudo docker info >/dev/null 2>&1; then
-            echo "✅ Docker is available and responding"
-            sudo docker --version
-          else
-            echo "❌ Docker daemon not responding, checking setup status..."
-            echo "=== Setup log (last 30 lines) ==="
-            tail -30 /home/ec2-user/setup.log 2>/dev/null || echo "Setup log not found"
-            echo "=== Trying to start Docker service ==="
-            sudo systemctl start docker || echo "Failed to start Docker"
-            sleep 5
-            if sudo docker info >/dev/null 2>&1; then
-              echo "✅ Docker started successfully"
-            else
-              echo "❌ Docker still not responding after restart attempt"
-              exit 1
-            fi
+          # Ensure Docker is running
+          if ! sudo docker info >/dev/null 2>&1; then
+            echo "Starting Docker service..."
+            sudo systemctl start docker
+            sleep 3
           fi
 
-          # Ensure shared network exists
-          if ! sudo docker network ls | grep -q "mastra-test-network"; then
-            sudo docker network create mastra-test-network --driver bridge
-          fi
-
-          # Create volume if it doesn't exist
+          # Create network and volume
+          sudo docker network create mastra-test-network --driver bridge 2>/dev/null || true
           sudo docker volume create postgres_data || true
 
-          # Stop existing container
-          sudo docker stop postgres-pgvector || true
-          sudo docker rm postgres-pgvector || true
+          # Stop and remove existing container
+          sudo docker stop postgres-pgvector 2>/dev/null || true
+          sudo docker rm postgres-pgvector 2>/dev/null || true
 
-          # Pull latest image
-          sudo docker pull pgvector/pgvector:pg17
-
-          # Run pgvector container
+          # Deploy pgvector container
           sudo docker run -d \
             --name postgres-pgvector \
             --network mastra-test-network \
@@ -132,7 +66,7 @@ jobs:
             -v postgres_data:/var/lib/postgresql/data \
             pgvector/pgvector:pg17
 
-          # Clean up unused images
+          # Clean up
           sudo docker image prune -f
         EOF
 
