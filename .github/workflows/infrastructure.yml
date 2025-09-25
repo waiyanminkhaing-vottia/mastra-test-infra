@@ -74,6 +74,10 @@ jobs:
       run: |
         cd terraform
         echo "🗑️ Destroying infrastructure..."
+        echo "Refreshing Terraform state..."
+        terraform refresh -auto-approve || echo "State refresh completed with warnings"
+        echo "Listing current resources in state..."
+        terraform state list || echo "No resources in state"
         terraform destroy -auto-approve
         echo "✅ Infrastructure destroyed"
       env:
