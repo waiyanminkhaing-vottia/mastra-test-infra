@@ -41,7 +41,6 @@ jobs:
         cd terraform
         terraform init
 
-
     - name: Terraform Plan
       id: plan
       run: |
@@ -142,5 +141,3 @@ jobs:
         cd terraform
         echo "## Infrastructure Outputs" >> $GITHUB_STEP_SUMMARY
         terraform output -json | jq -r 'to_entries[] | "- **\(.key)**: \(.value.value)"' >> $GITHUB_STEP_SUMMARY
-
-

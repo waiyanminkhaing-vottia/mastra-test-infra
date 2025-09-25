@@ -22,7 +22,7 @@ resource "tls_private_key" "ssh_key" {
   rsa_bits  = 4096
 }
 
-# Import existing key pair for the instance
+# Create key pair for the instance
 resource "aws_lightsail_key_pair" "mastra_key" {
   name       = "${var.environment}-${var.project_name}-key"
   public_key = tls_private_key.ssh_key.public_key_openssh
@@ -73,12 +73,12 @@ resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
   }
 }
 
-# Create or use existing static IP
+# Create static IP
 resource "aws_lightsail_static_ip" "mastra_static_ip" {
   name = "${var.environment}-${var.project_name}-static-ip"
 }
 
-# Attach existing static IP to instance
+# Attach static IP to instance
 resource "aws_lightsail_static_ip_attachment" "mastra_static_ip_attachment" {
   static_ip_name = aws_lightsail_static_ip.mastra_static_ip.id
   instance_name  = aws_lightsail_instance.mastra_instance.id
@@ -102,4 +102,3 @@ resource "aws_route53_record" "domain_record" {
   ttl     = 300
   records = [aws_lightsail_static_ip.mastra_static_ip.ip_address]
 }
-

@@ -27,7 +27,6 @@ variable "instance_bundle_id" {
   default     = "medium_2_0"
 }
 
-
 variable "domain_name" {
   description = "Custom domain name for the application"
   type        = string
@@ -51,4 +50,3 @@ variable "create_dns_record" {
   default     = true
 }
 
-# Route53 and key pair management simplified for development

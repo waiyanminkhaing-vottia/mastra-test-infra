@@ -27,12 +27,8 @@ jobs:
       run: |
         cd terraform
         terraform init
-
-
-        # Run terraform plan and apply
         terraform plan -out=tfplan
         terraform apply -auto-approve tfplan
-
 
     - name: Setup SSH from Terraform outputs
       run: |
@@ -58,7 +54,6 @@ jobs:
         # Export for later steps
         echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
         echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
-
 
     - name: Deploy pgvector container
       run: |
@@ -120,24 +115,6 @@ jobs:
             fi
           else
             echo "❌ Docker not installed"
-          fi
-
-          echo ""
-          # Check Nginx
-          echo "Nginx Status:"
-          if command -v nginx >/dev/null 2>&1; then
-            echo "✅ Nginx installed: $(nginx -v 2>&1)"
-            if sudo systemctl is-active nginx >/dev/null; then
-              echo "✅ Nginx service: active"
-              echo "✅ Nginx configuration test:"
-              sudo nginx -t
-              echo "✅ Listening ports:"
-              sudo netstat -tlnp | grep nginx || echo "No nginx processes found"
-            else
-              echo "❌ Nginx service: inactive"
-            fi
-          else
-            echo "❌ Nginx not installed"
           fi
 
           echo ""
