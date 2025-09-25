@@ -28,9 +28,13 @@ jobs:
         cd terraform
         terraform init
 
-        # Import existing resources if they exist
-        terraform import aws_lightsail_static_ip.mastra_static_ip "dev-mastra-test-static-ip" || echo "Static IP doesn't exist or already imported"
-        terraform import aws_lightsail_key_pair.mastra_key "dev-mastra-test-key" || echo "Key pair doesn't exist or already imported"
+        # Import existing resources if they exist (ignore errors if already imported)
+        terraform import aws_lightsail_static_ip.mastra_static_ip "dev-mastra-test-static-ip" 2>/dev/null || true
+        terraform import aws_lightsail_key_pair.mastra_key "dev-mastra-test-key" 2>/dev/null || true
+
+        # Check what resources exist in state
+        echo "Current Terraform state:"
+        terraform state list || echo "No resources in state"
 
         terraform plan -out=tfplan
         terraform apply -auto-approve tfplan
