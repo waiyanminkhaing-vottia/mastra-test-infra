@@ -26,6 +26,12 @@ resource "tls_private_key" "ssh_key" {
 resource "aws_lightsail_key_pair" "mastra_key" {
   name       = "${var.environment}-${var.project_name}-key"
   public_key = tls_private_key.ssh_key.public_key_openssh
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }
 
 # Create the Lightsail instance
@@ -76,6 +82,12 @@ resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
 # Create static IP
 resource "aws_lightsail_static_ip" "mastra_static_ip" {
   name = "${var.environment}-${var.project_name}-static-ip"
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }
 
 # Attach static IP to instance
@@ -101,4 +113,10 @@ resource "aws_route53_record" "domain_record" {
   type    = "A"
   ttl     = 300
   records = [aws_lightsail_static_ip.mastra_static_ip.ip_address]
+
+  tags = {
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }

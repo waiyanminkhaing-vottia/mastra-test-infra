@@ -18,7 +18,6 @@ sudo dnf update -y
 
 # Install Docker
 log "Installing Docker..."
-sudo dnf update -y
 if sudo dnf install -y docker; then
     log "Docker package installed successfully"
 else

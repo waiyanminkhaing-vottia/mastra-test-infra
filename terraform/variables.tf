@@ -44,9 +44,4 @@ variable "base_domain" {
   default     = "dev-maestra.vottia.me"
 }
 
-variable "create_dns_record" {
-  description = "Whether to create DNS A record automatically (requires Route53 hosted zone)"
-  type        = bool
-  default     = true
-}
 

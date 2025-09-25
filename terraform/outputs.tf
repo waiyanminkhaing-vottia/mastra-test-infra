@@ -34,14 +34,9 @@ output "ssh_public_key" {
   value       = tls_private_key.ssh_key.public_key_openssh
 }
 
-output "health_check_command" {
-  description = "Command to run health check on the instance"
-  value       = "./scripts/check-instance-health.sh ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
-}
-
-output "setup_command" {
-  description = "Command to manually setup the instance if needed"
-  value       = "./scripts/setup-instance.sh ${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
+output "health_check_url" {
+  description = "Health check URL for the application"
+  value       = "http://${var.domain_name}/health"
 }
 
 output "app_urls" {
