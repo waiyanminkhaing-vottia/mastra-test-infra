@@ -36,16 +36,20 @@ jobs:
         # Setup SSH
         mkdir -p ~/.ssh
 
-        # Setup SSH key from Terraform output
-        printf '%s\n' "$LIGHTSAIL_SSH_KEY" > ~/.ssh/id_rsa
+        # Setup SSH key from Terraform output with proper formatting
+        echo "$LIGHTSAIL_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+
+        # Debug: Show key format
+        echo "SSH key first line: $(head -1 ~/.ssh/id_rsa)"
+        echo "SSH key last line: $(tail -1 ~/.ssh/id_rsa)"
+        echo "SSH key character count: $(wc -c < ~/.ssh/id_rsa)"
 
         # Validate SSH key format
         if ! ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
           echo "❌ Invalid SSH key format"
-          echo "Key contents (first/last lines):"
-          head -1 ~/.ssh/id_rsa
-          tail -1 ~/.ssh/id_rsa
+          echo "Full key contents:"
+          cat ~/.ssh/id_rsa | hexdump -C | head -20
           exit 1
         fi
 
