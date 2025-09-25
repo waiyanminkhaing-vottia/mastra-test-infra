@@ -3,7 +3,7 @@
 # User data script for Mastra test infrastructure setup
 # This script runs on instance first boot - Amazon Linux 2023
 
-set -eu
+set -e
 
 # Function to log messages with timestamps
 log() {
@@ -49,7 +49,17 @@ sudo chmod 755 /home/ec2-user/app
 
 # Install other useful tools
 log "Installing additional tools..."
-sudo dnf install -y htop vim git unzip curl wget jq nginx
+sudo dnf install -y htop vim git unzip curl wget jq
+
+# Install nginx separately with error handling
+log "Installing nginx..."
+if sudo dnf install -y nginx; then
+    log "Nginx installed successfully"
+else
+    log "ERROR: Failed to install nginx, retrying..."
+    sleep 5
+    sudo dnf install -y nginx || log "ERROR: Nginx installation failed after retry"
+fi
 
 # Configure Nginx for multiple Next.js apps
 log "Configuring Nginx for multi-app setup..."
@@ -148,6 +158,26 @@ fi
 # Set proper log file permissions
 sudo chown ec2-user:ec2-user /home/ec2-user/setup.log
 sudo chmod 644 /home/ec2-user/setup.log
+
+# Final verification
+log "Performing final verification..."
+if curl -s localhost/health | grep -q "healthy"; then
+    log "✅ Health endpoint is working"
+else
+    log "⚠️  Health endpoint not responding, but continuing..."
+fi
+
+if systemctl is-active --quiet nginx; then
+    log "✅ Nginx service is active"
+else
+    log "❌ Nginx service is not active"
+fi
+
+if systemctl is-active --quiet docker; then
+    log "✅ Docker service is active"
+else
+    log "❌ Docker service is not active"
+fi
 
 # Create a success marker file
 echo "$(date '+%Y-%m-%d %H:%M:%S')" | sudo tee /home/ec2-user/.setup-completed
