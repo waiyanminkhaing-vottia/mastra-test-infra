@@ -15,8 +15,8 @@ jobs:
       run: |
         echo "Setting up SSH connection..."
 
-        # Set connection details
-        LIGHTSAIL_HOST="test.dev-maestra.vottia.me"
+        # Set connection details from Terraform variables
+        LIGHTSAIL_HOST=$(grep 'default.*=' terraform/variables.tf | grep 'test.dev-maestra.vottia.me' | sed 's/.*"\(.*\)".*/\1/')
         LIGHTSAIL_USER="ec2-user"
 
         echo "Host: $LIGHTSAIL_HOST"

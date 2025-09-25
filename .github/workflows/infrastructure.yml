@@ -138,25 +138,8 @@ jobs:
 
         echo "Waiting for instance setup to complete..."
 
-        # Wait for services to be ready
+        # Verify services are running
         ssh -o ConnectTimeout=10 ec2-user@$INSTANCE_IP << 'EOF'
-          # Check if setup was already completed or wait for completion
-          echo "Checking instance setup status..."
-          if [ -f /home/ec2-user/.setup-completed ]; then
-            echo "✅ Instance setup already completed"
-          else
-            echo "Waiting for instance setup to complete..."
-            for i in {1..30}; do
-              if [ -f /home/ec2-user/.setup-completed ]; then
-                echo "✅ Instance setup completed"
-                break
-              else
-                echo "⏳ Setup in progress... ($i/30)"
-                sleep 10
-              fi
-            done
-          fi
-
           # Check Docker service
           echo "Checking Docker service..."
           if sudo systemctl is-active docker >/dev/null; then
