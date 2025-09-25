@@ -78,6 +78,64 @@ jobs:
       env:
         TF_IN_AUTOMATION: true
 
+    - name: Wait and verify services
+      if: github.event.inputs.action == 'apply'
+      run: |
+        cd terraform
+
+        # Get connection details
+        INSTANCE_IP=$(terraform output -raw instance_public_ip)
+        SSH_KEY=$(terraform output -raw ssh_private_key)
+
+        # Setup SSH
+        mkdir -p ~/.ssh
+        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts
+
+        echo "Waiting for instance setup to complete..."
+
+        # Wait for services to be ready
+        ssh -o ConnectTimeout=10 ec2-user@$INSTANCE_IP << 'EOF'
+          # Wait for setup completion
+          echo "Waiting for instance setup to complete..."
+          for i in {1..60}; do
+            if [ -f /home/ec2-user/.setup-completed ]; then
+              echo "✅ Instance setup completed"
+              break
+            else
+              echo "⏳ Setup in progress... ($i/60)"
+              sleep 10
+            fi
+          done
+
+          # Check Docker service
+          echo "Checking Docker service..."
+          if sudo systemctl is-active docker >/dev/null; then
+            echo "✅ Docker service is active"
+            echo "Docker version: $(sudo docker --version)"
+          else
+            echo "❌ Docker service is not active"
+          fi
+
+          # Check Nginx service
+          echo "Checking Nginx service..."
+          if sudo systemctl is-active nginx >/dev/null; then
+            echo "✅ Nginx service is active"
+            echo "Nginx version: $(nginx -v 2>&1)"
+          else
+            echo "❌ Nginx service is not active"
+          fi
+
+          # Test health endpoint
+          echo "Testing health endpoint..."
+          if curl -s --connect-timeout 5 localhost/health | grep -q "healthy"; then
+            echo "✅ Health endpoint is responding"
+          else
+            echo "⚠️ Health endpoint not responding yet"
+          fi
+        EOF
+
     - name: Output Instance Info
       if: github.event.inputs.action == 'apply'
       run: |
