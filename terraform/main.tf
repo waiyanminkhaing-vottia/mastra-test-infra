@@ -89,20 +89,14 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Create Route53 hosted zone for demo.vottia.me
-resource "aws_route53_zone" "demo_zone" {
+# Use existing Route53 hosted zone
+data "aws_route53_zone" "existing_zone" {
   name = var.base_domain
-
-  tags = {
-    Project     = var.project_name
-    Environment = var.environment
-    ManagedBy   = "terraform"
-  }
 }
 
-# Create A record for the domain
+# Create A record for the domain in existing hosted zone
 resource "aws_route53_record" "domain_record" {
-  zone_id = aws_route53_zone.demo_zone.zone_id
+  zone_id = data.aws_route53_zone.existing_zone.zone_id
   name    = var.domain_name
   type    = "A"
   ttl     = 300

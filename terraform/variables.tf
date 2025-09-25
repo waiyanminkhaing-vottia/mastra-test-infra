@@ -31,7 +31,7 @@ variable "instance_bundle_id" {
 variable "domain_name" {
   description = "Custom domain name for the application"
   type        = string
-  default     = "demo.vottia.me"
+  default     = "test.dev-maestra.vottia.me"
 
   validation {
     condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]\\.[a-zA-Z]{2,}$", var.domain_name))
@@ -42,7 +42,7 @@ variable "domain_name" {
 variable "base_domain" {
   description = "Base domain name (Route53 hosted zone)"
   type        = string
-  default     = "demo.vottia.me"
+  default     = "dev-maestra.vottia.me"
 }
 
 variable "create_dns_record" {

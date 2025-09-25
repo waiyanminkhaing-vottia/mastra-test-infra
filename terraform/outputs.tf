@@ -68,10 +68,10 @@ output "dns_configuration" {
 output "route53_info" {
   description = "Route53 hosted zone information"
   value = {
-    hosted_zone_id = aws_route53_zone.demo_zone.zone_id
-    domain         = aws_route53_zone.demo_zone.name
-    name_servers   = aws_route53_zone.demo_zone.name_servers
-    setup_note     = "Configure these nameservers at your domain registrar to activate DNS"
+    hosted_zone_id = data.aws_route53_zone.existing_zone.zone_id
+    domain         = data.aws_route53_zone.existing_zone.name
+    name_servers   = data.aws_route53_zone.existing_zone.name_servers
+    setup_note     = "Using existing hosted zone - nameservers should already be configured"
   }
 }
 
