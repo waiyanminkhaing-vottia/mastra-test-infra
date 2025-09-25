@@ -57,11 +57,16 @@ jobs:
       run: |
         cd terraform
 
+        echo "Getting Terraform outputs..."
         # Get values from Terraform outputs
         LIGHTSAIL_HOST=$(terraform output -raw instance_public_ip)
         LIGHTSAIL_SSH_KEY=$(terraform output -raw ssh_private_key)
         LIGHTSAIL_USER="ec2-user"
 
+        echo "Host: $LIGHTSAIL_HOST"
+        echo "User: $LIGHTSAIL_USER"
+
+        echo "Setting up SSH..."
         # Setup SSH
         mkdir -p ~/.ssh
 
@@ -69,14 +74,27 @@ jobs:
         echo "$LIGHTSAIL_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
+        echo "Validating SSH key..."
         # Validate SSH key format
         ssh-keygen -l -f ~/.ssh/id_rsa
 
+        echo "Adding host to known_hosts..."
         ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts
+
+        echo "Testing SSH connection..."
+        # Test SSH connection
+        if ssh -o ConnectTimeout=30 -o StrictHostKeyChecking=no $LIGHTSAIL_USER@$LIGHTSAIL_HOST "echo 'SSH connection successful'"; then
+          echo "✅ SSH connection test passed"
+        else
+          echo "❌ SSH connection test failed"
+          exit 1
+        fi
 
         # Export for later steps
         echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
         echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
+
+        echo "SSH setup completed successfully"
 
     - name: Deploy pgvector container
       run: |
