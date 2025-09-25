@@ -27,7 +27,11 @@ jobs:
       run: |
         cd terraform
         terraform init
-        terraform plan -out=tfplan
+
+        # Use timestamp to create unique resource names
+        TIMESTAMP=$(date +%s)
+
+        terraform plan -var="project_name=mastra-test-$TIMESTAMP" -out=tfplan
         terraform apply tfplan
 
     - name: Setup SSH from Terraform outputs
