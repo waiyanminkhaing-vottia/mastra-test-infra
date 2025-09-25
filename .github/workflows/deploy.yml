@@ -34,6 +34,10 @@ jobs:
         echo "Host: $LIGHTSAIL_HOST"
         echo "User: $LIGHTSAIL_USER"
 
+        # Export for later steps
+        echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
+        echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
+
         # Setup SSH using GitHub Secret
         mkdir -p ~/.ssh
         echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
