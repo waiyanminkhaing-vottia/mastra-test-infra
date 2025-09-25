@@ -34,7 +34,7 @@ variable "domain_name" {
   default     = "demo.vottia.me"
 
   validation {
-    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\\.[a-zA-Z]{2,}$", var.domain_name))
+    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]\\.[a-zA-Z]{2,}$", var.domain_name))
     error_message = "Domain name must be a valid domain format."
   }
 }
