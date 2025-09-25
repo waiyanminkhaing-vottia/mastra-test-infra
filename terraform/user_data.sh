@@ -49,7 +49,7 @@ sudo chmod 755 /home/ec2-user/app
 
 # Install other useful tools
 log "Installing additional tools..."
-sudo dnf install -y htop vim git unzip curl wget jq
+sudo dnf install -y htop vim git unzip curl wget jq || log "Some additional tools failed to install, continuing..."
 
 # Install nginx with cache refresh
 log "Installing nginx..."
