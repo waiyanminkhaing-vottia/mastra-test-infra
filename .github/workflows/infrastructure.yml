@@ -84,6 +84,39 @@ jobs:
           echo "⚠️ No state file found - resources may need manual cleanup"
         fi
         terraform destroy -auto-approve
+
+        # Manual cleanup if Terraform state is missing
+        echo "Performing manual cleanup of AWS resources..."
+
+        # Delete Route53 DNS record
+        echo "Deleting Route53 DNS record..."
+        aws route53 list-hosted-zones --query "HostedZones[?Name=='dev-maestra.vottia.me.'].Id" --output text | while read ZONE_ID; do
+          if [ ! -z "$ZONE_ID" ]; then
+            RECORD_EXISTS=$(aws route53 list-resource-record-sets --hosted-zone-id $ZONE_ID --query "ResourceRecordSets[?Name=='test.dev-maestra.vottia.me.' && Type=='A']" --output text)
+            if [ ! -z "$RECORD_EXISTS" ]; then
+              IP_ADDRESS=$(aws route53 list-resource-record-sets --hosted-zone-id $ZONE_ID --query "ResourceRecordSets[?Name=='test.dev-maestra.vottia.me.' && Type=='A'].ResourceRecords[0].Value" --output text)
+              aws route53 change-resource-record-sets --hosted-zone-id $ZONE_ID --change-batch "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":{\"Name\":\"test.dev-maestra.vottia.me\",\"Type\":\"A\",\"TTL\":300,\"ResourceRecords\":[{\"Value\":\"$IP_ADDRESS\"}]}}]}" || echo "DNS record already deleted or not found"
+              echo "DNS record deleted"
+            fi
+          fi
+        done
+
+        # Detach static IP
+        echo "Detaching static IP..."
+        aws lightsail detach-static-ip --static-ip-name dev-mastra-test-static-ip || echo "Static IP already detached or not found"
+
+        # Delete Lightsail instance
+        echo "Deleting Lightsail instance..."
+        aws lightsail delete-instance --instance-name dev-mastra-test-instance || echo "Instance already deleted or not found"
+
+        # Delete static IP
+        echo "Deleting static IP..."
+        aws lightsail delete-static-ip --static-ip-name dev-mastra-test-static-ip || echo "Static IP already deleted or not found"
+
+        # Delete key pair
+        echo "Deleting key pair..."
+        aws lightsail delete-key-pair --key-pair-name dev-mastra-test-key || echo "Key pair already deleted or not found"
+
         echo "✅ Infrastructure destroyed"
       env:
         TF_IN_AUTOMATION: true
