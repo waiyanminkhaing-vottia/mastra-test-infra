@@ -43,6 +43,9 @@ jobs:
         # Wait a moment for deletions to complete
         sleep 10
 
+        # Try to import existing DNS record if it exists
+        terraform import aws_route53_record.domain_record "Z0750357199MM4BM9LHCH_test.dev-maestra.vottia.me_A" || echo "DNS record doesn't exist or already imported"
+
         # Check what resources exist in state
         echo "Current Terraform state:"
         terraform state list || echo "No resources in state"
