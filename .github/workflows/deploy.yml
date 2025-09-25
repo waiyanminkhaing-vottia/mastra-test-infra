@@ -28,25 +28,11 @@ jobs:
         cd terraform
         terraform init
 
-        # Import existing resources if they exist (using dev environment)
-        terraform import aws_lightsail_static_ip.mastra_static_ip dev-mastra-test-static-ip || echo "Static IP already imported or doesn't exist"
-        terraform import aws_lightsail_key_pair.mastra_key dev-mastra-test-key || echo "Key pair already imported or doesn't exist"
 
-        # Run terraform plan and check for errors
-        if terraform plan -out=tfplan; then
-          echo "✅ Terraform plan successful"
-        else
-          echo "❌ Terraform plan failed"
-          exit 1
-        fi
+        # Run terraform plan and apply
+        terraform plan -out=tfplan
+        terraform apply -auto-approve tfplan
 
-        # Apply terraform changes
-        if terraform apply tfplan; then
-          echo "✅ Terraform apply successful"
-        else
-          echo "❌ Terraform apply failed"
-          exit 1
-        fi
 
     - name: Setup SSH from Terraform outputs
       run: |
@@ -64,18 +50,8 @@ jobs:
         echo "$LIGHTSAIL_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
-        # Debug: Show key format
-        echo "SSH key first line: $(head -1 ~/.ssh/id_rsa)"
-        echo "SSH key last line: $(tail -1 ~/.ssh/id_rsa)"
-        echo "SSH key character count: $(wc -c < ~/.ssh/id_rsa)"
-
         # Validate SSH key format
-        if ! ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
-          echo "❌ Invalid SSH key format"
-          echo "Full key contents:"
-          cat ~/.ssh/id_rsa | hexdump -C | head -20
-          exit 1
-        fi
+        ssh-keygen -l -f ~/.ssh/id_rsa
 
         ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts
 
@@ -83,24 +59,6 @@ jobs:
         echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
         echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
 
-    - name: Save SSH keys for development
-      run: |
-        cd terraform
-
-        # Get SSH keys from Terraform outputs
-        PRIVATE_KEY=$(terraform output -raw ssh_private_key)
-        PUBLIC_KEY=$(terraform output -raw ssh_public_key)
-
-        # Save keys to files for potential copying to another repo
-        echo "$PRIVATE_KEY" > /tmp/dev-mastra-test-private-key.pem
-        echo "$PUBLIC_KEY" > /tmp/dev-mastra-test-public-key.pub
-        chmod 600 /tmp/dev-mastra-test-private-key.pem
-        chmod 644 /tmp/dev-mastra-test-public-key.pub
-
-        echo "SSH keys saved:"
-        echo "Private key: /tmp/dev-mastra-test-private-key.pem"
-        echo "Public key: /tmp/dev-mastra-test-public-key.pub"
-        echo "SSH command: ssh -i /tmp/dev-mastra-test-private-key.pem ec2-user@$LIGHTSAIL_HOST"
 
     - name: Deploy pgvector container
       run: |

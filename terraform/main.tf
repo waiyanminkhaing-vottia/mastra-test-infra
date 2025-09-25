@@ -73,13 +73,9 @@ resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
   }
 }
 
-# Use existing static IP (will be imported)
+# Create or use existing static IP
 resource "aws_lightsail_static_ip" "mastra_static_ip" {
   name = "${var.environment}-${var.project_name}-static-ip"
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 # Attach existing static IP to instance
