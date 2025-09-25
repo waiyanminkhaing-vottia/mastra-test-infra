@@ -25,55 +25,18 @@ jobs:
 
     - name: Setup SSH for deployment
       run: |
-        cd terraform
+        echo "Setting up SSH connection to existing infrastructure..."
 
-        echo "Initializing Terraform state..."
-        terraform init
+        # Use domain name directly (infrastructure already exists)
+        LIGHTSAIL_HOST="test.dev-maestra.vottia.me"
+        LIGHTSAIL_USER="ec2-user"
 
-        echo "Importing existing infrastructure into Terraform state..."
+        echo "Host: $LIGHTSAIL_HOST"
+        echo "User: $LIGHTSAIL_USER"
 
-        # Import existing resources (ignore errors if already imported)
-        terraform import aws_lightsail_static_ip.mastra_static_ip "dev-mastra-test-static-ip" 2>/dev/null || echo "Static IP already imported or doesn't exist"
-        terraform import aws_lightsail_key_pair.mastra_key "dev-mastra-test-key" 2>/dev/null || echo "Key pair already imported or doesn't exist"
-        terraform import aws_lightsail_instance.mastra_instance "dev-mastra-test-instance" 2>/dev/null || echo "Instance already imported or doesn't exist"
-        terraform import aws_route53_record.domain_record "Z0750357199MM4BM9LHCH_test.dev-maestra.vottia.me_A" 2>/dev/null || echo "DNS record already imported or doesn't exist"
-
-        echo "Refreshing Terraform state..."
-        terraform refresh
-
-        echo "Getting Terraform outputs..."
-        # Check if critical outputs exist
-        if ! terraform output instance_public_ip >/dev/null 2>&1; then
-          echo "❌ Critical outputs still missing after import - using domain name instead"
-          LIGHTSAIL_HOST="test.dev-maestra.vottia.me"
-          LIGHTSAIL_USER="ec2-user"
-
-          echo "Host: $LIGHTSAIL_HOST (using domain)"
-          echo "User: $LIGHTSAIL_USER"
-          echo "⚠️ Using GitHub Secret for SSH key since Terraform state incomplete"
-
-          # Use GitHub Secret as fallback
-          LIGHTSAIL_SSH_KEY="${{ secrets.LIGHTSAIL_SSH_KEY }}"
-        else
-          echo "✅ Terraform outputs available"
-          # Get host IP from Terraform outputs
-          LIGHTSAIL_HOST=$(terraform output -raw instance_public_ip)
-          LIGHTSAIL_USER="ec2-user"
-
-          echo "Host: $LIGHTSAIL_HOST"
-          echo "User: $LIGHTSAIL_USER"
-
-          # Setup SSH key from Terraform output
-          LIGHTSAIL_SSH_KEY=$(terraform output -raw ssh_private_key)
-        fi
-
-        echo "Setting up SSH with Terraform-generated key..."
-        # Setup SSH using Terraform-generated key (guaranteed to match the instance)
+        # Setup SSH using GitHub Secret
         mkdir -p ~/.ssh
-
-        # Setup SSH key from Terraform output
-        LIGHTSAIL_SSH_KEY=$(terraform output -raw ssh_private_key)
-        echo "$LIGHTSAIL_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
 
         echo "Validating SSH key..."
