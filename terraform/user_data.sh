@@ -18,12 +18,24 @@ sudo dnf update -y
 
 # Install Docker
 log "Installing Docker..."
-sudo dnf install -y docker
+sudo dnf update -y
+if sudo dnf install -y docker; then
+    log "Docker package installed successfully"
+else
+    log "ERROR: Docker package installation failed"
+    exit 1
+fi
 
 # Start and enable Docker
 log "Starting Docker service..."
-sudo systemctl start docker
-sudo systemctl enable docker
+if sudo systemctl start docker; then
+    log "Docker service started successfully"
+    sudo systemctl enable docker
+    log "Docker service enabled for startup"
+else
+    log "ERROR: Failed to start Docker service"
+    exit 1
+fi
 
 # Add ec2-user to docker group
 log "Adding ec2-user to docker group..."
