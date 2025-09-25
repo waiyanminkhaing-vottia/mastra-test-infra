@@ -73,18 +73,14 @@ resource "aws_lightsail_instance_public_ports" "mastra_instance_ports" {
   }
 }
 
-# Create static IP
-resource "aws_lightsail_static_ip" "mastra_static_ip" {
-  name = "${var.project_name}-static-ip"
-
-  lifecycle {
-    prevent_destroy = true
-  }
+# Use existing static IP
+data "aws_lightsail_static_ip" "existing_static_ip" {
+  name = "mastra-test-static-ip"
 }
 
-# Attach static IP to instance
+# Attach existing static IP to instance
 resource "aws_lightsail_static_ip_attachment" "mastra_static_ip_attachment" {
-  static_ip_name = aws_lightsail_static_ip.mastra_static_ip.id
+  static_ip_name = data.aws_lightsail_static_ip.existing_static_ip.id
   instance_name  = aws_lightsail_instance.mastra_instance.id
 }
 
@@ -110,6 +106,6 @@ resource "aws_route53_record" "domain_record" {
   name    = var.domain_name
   type    = "A"
   ttl     = 300
-  records = [aws_lightsail_static_ip.mastra_static_ip.ip_address]
+  records = [data.aws_lightsail_static_ip.existing_static_ip.ip_address]
 }
 
