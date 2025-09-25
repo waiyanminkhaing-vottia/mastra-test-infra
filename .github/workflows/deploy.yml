@@ -23,37 +23,7 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
 
-    - name: Deploy Infrastructure
-      run: |
-        cd terraform
-        terraform init
-
-        # Clean up any existing resources that might conflict
-        echo "Cleaning up existing conflicting resources..."
-
-        # Delete existing static IP if it exists
-        aws lightsail release-static-ip --static-ip-name "dev-mastra-test-static-ip" --region ap-northeast-1 || echo "Static IP doesn't exist or already deleted"
-
-        # Delete existing key pair if it exists
-        aws lightsail delete-key-pair --key-pair-name "dev-mastra-test-key" --region ap-northeast-1 || echo "Key pair doesn't exist or already deleted"
-
-        # Delete existing instance if it exists
-        aws lightsail delete-instance --instance-name "dev-mastra-test-instance" --region ap-northeast-1 || echo "Instance doesn't exist or already deleted"
-
-        # Wait a moment for deletions to complete
-        sleep 10
-
-        # Try to import existing DNS record if it exists
-        terraform import aws_route53_record.domain_record "Z0750357199MM4BM9LHCH_test.dev-maestra.vottia.me_A" || echo "DNS record doesn't exist or already imported"
-
-        # Check what resources exist in state
-        echo "Current Terraform state:"
-        terraform state list || echo "No resources in state"
-
-        terraform plan -out=tfplan
-        terraform apply -auto-approve tfplan
-
-    - name: Setup SSH with GitHub Secret
+    - name: Setup SSH for deployment
       run: |
         cd terraform
 
