@@ -74,22 +74,22 @@ jobs:
       run: |
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
           # Ensure shared network exists
-          if ! docker network ls | grep -q "mastra-test-network"; then
-            docker network create mastra-test-network --driver bridge
+          if ! sudo docker network ls | grep -q "mastra-test-network"; then
+            sudo docker network create mastra-test-network --driver bridge
           fi
 
           # Create volume if it doesn't exist
-          docker volume create postgres_data || true
+          sudo docker volume create postgres_data || true
 
           # Stop existing container
-          docker stop postgres-pgvector || true
-          docker rm postgres-pgvector || true
+          sudo docker stop postgres-pgvector || true
+          sudo docker rm postgres-pgvector || true
 
           # Pull latest image
-          docker pull pgvector/pgvector:pg17
+          sudo docker pull pgvector/pgvector:pg17
 
           # Run pgvector container
-          docker run -d \
+          sudo docker run -d \
             --name postgres-pgvector \
             --network mastra-test-network \
             --restart unless-stopped \
@@ -102,12 +102,12 @@ jobs:
             pgvector/pgvector:pg17
 
           # Clean up unused images
-          docker image prune -f
+          sudo docker image prune -f
         EOF
 
     - name: Verify deployment
       run: |
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
-          docker ps | grep postgres-pgvector
-          docker logs postgres-pgvector --tail=20
+          sudo docker ps | grep postgres-pgvector
+          sudo docker logs postgres-pgvector --tail=20
         EOF
