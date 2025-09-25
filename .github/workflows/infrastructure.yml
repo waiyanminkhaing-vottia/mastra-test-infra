@@ -42,6 +42,7 @@ jobs:
         terraform init
 
     - name: Terraform Validate
+      if: github.event.inputs.action != 'destroy'
       run: |
         cd terraform
         terraform validate
