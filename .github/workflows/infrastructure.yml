@@ -111,7 +111,7 @@ jobs:
 
         # Delete static IP
         echo "Deleting static IP..."
-        aws lightsail delete-static-ip --static-ip-name dev-mastra-test-static-ip || echo "Static IP already deleted or not found"
+        aws lightsail release-static-ip --static-ip-name dev-mastra-test-static-ip || echo "Static IP already deleted or not found"
 
         # Delete key pair
         echo "Deleting key pair..."
