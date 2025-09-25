@@ -51,19 +51,21 @@ sudo chmod 755 /home/ec2-user/app
 log "Installing additional tools..."
 sudo dnf install -y htop vim git unzip curl wget jq
 
-# Install nginx separately with error handling
+# Install nginx with cache refresh
 log "Installing nginx..."
+sudo dnf clean all
+sudo dnf makecache
 if sudo dnf install -y nginx; then
     log "Nginx installed successfully"
 else
-    log "ERROR: Failed to install nginx, retrying..."
-    sleep 5
-    sudo dnf install -y nginx || log "ERROR: Nginx installation failed after retry"
+    log "ERROR: Nginx installation failed"
+    # Continue without nginx for now
 fi
 
-# Configure Nginx for multiple Next.js apps
-log "Configuring Nginx for multi-app setup..."
-sudo tee /etc/nginx/conf.d/nextjs-apps.conf > /dev/null << 'EOF'
+# Configure Nginx for multiple Next.js apps (only if nginx is installed)
+if command -v nginx >/dev/null 2>&1; then
+    log "Configuring Nginx for multi-app setup..."
+    sudo tee /etc/nginx/conf.d/nextjs-apps.conf > /dev/null << 'EOF'
 server {
     listen 80 default_server;
     server_name _;
@@ -135,6 +137,10 @@ fi
 # Verify Nginx is running
 log "Verifying Nginx status..."
 sudo systemctl status nginx --no-pager
+
+else
+    log "Nginx not installed - skipping nginx configuration"
+fi
 
 # Configure firewall (firewalld on Amazon Linux)
 log "Configuring firewall..."
