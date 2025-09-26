@@ -73,7 +73,29 @@ jobs:
     - name: Verify deployment
       run: |
         ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
+          echo "Checking container status..."
           sudo docker ps | grep postgres-pgvector
+
+          echo "Checking container logs..."
           sudo docker logs postgres-pgvector --tail=20
+
+          echo "Waiting for PostgreSQL to be ready..."
+          for i in {1..30}; do
+            if sudo docker exec postgres-pgvector pg_isready -U ${{ vars.POSTGRES_USER }} >/dev/null 2>&1; then
+              echo "✅ PostgreSQL is ready"
+              break
+            else
+              echo "⏳ Waiting for PostgreSQL... ($i/30)"
+              sleep 2
+            fi
+          done
+
+          echo "Verifying databases are created..."
+          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -c "\l" | grep -E "${{ vars.POSTGRES_DB }}|${{ vars.AGENT_POSTGRES_DB }}"
+
+          echo "Checking pgvector extension..."
+          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+
+          echo "✅ Database verification completed"
         EOF
 
