@@ -139,12 +139,37 @@ jobs:
         echo "Waiting for instance setup to complete..."
         echo "This process typically takes 3-5 minutes for full service initialization."
 
+        # Wait for SSH to be available first
+        echo "Waiting for SSH access to be available..."
+        SSH_READY=false
+        for i in {1..10}; do
+          echo "Attempt $i/10: Testing SSH connectivity..."
+          if ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP "echo 'SSH connected'" 2>/dev/null; then
+            echo "✅ SSH connection established!"
+            SSH_READY=true
+            break
+          else
+            echo "⏳ SSH not ready, waiting 30 seconds..."
+            sleep 30
+          fi
+        done
+
+        if [ "$SSH_READY" = false ]; then
+          echo "❌ SSH connection failed after 5 minutes"
+          echo "Possible issues:"
+          echo "- Instance still booting"
+          echo "- Security group blocking SSH"
+          echo "- SSH key mismatch"
+          echo "- Instance not ready"
+          exit 1
+        fi
+
         # Wait for setup completion marker
         echo "Checking for setup completion marker..."
         SETUP_COMPLETE=false
         for i in {1..20}; do
           echo "Attempt $i/20: Checking setup status..."
-          if ssh -o ConnectTimeout=10 -o BatchMode=yes ec2-user@$INSTANCE_IP "test -f /home/ec2-user/.setup-completed" 2>/dev/null; then
+          if ssh -o ConnectTimeout=10 -o BatchMode=yes -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP "test -f /home/ec2-user/.setup-completed" 2>/dev/null; then
             echo "✅ Setup completion marker found!"
             SETUP_COMPLETE=true
             break
@@ -164,7 +189,7 @@ jobs:
         sleep 60
 
         # Verify services are running with retry logic
-        ssh -o ConnectTimeout=10 ec2-user@$INSTANCE_IP << 'EOF'
+        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP << 'EOF'
           # Function to check service with retries
           check_service_with_retry() {
             local service_name=$1
