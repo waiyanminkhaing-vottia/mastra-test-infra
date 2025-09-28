@@ -91,14 +91,10 @@ jobs:
       run: |
         if [ ! -f "${{ env.ROUTES_FILE }}" ]; then
           echo "Creating initial routes configuration file..."
-          cat > ${{ env.ROUTES_FILE }} << 'EOF'
-        {
-          "routes": [],
-          "last_updated": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-          "version": "1.0"
-        }
-        EOF
+          python3 -c "import json; import os; from datetime import datetime; routes_file = os.environ.get('ROUTES_FILE', 'nginx-routes.json'); config = {'routes': [], 'last_updated': datetime.utcnow().isoformat() + 'Z', 'version': '1.0', 'description': 'Dynamic nginx route configuration for Mastra infrastructure'}; f = open(routes_file, 'w'); json.dump(config, f, indent=2); f.close(); print(f'Initial routes configuration created: {routes_file}')"
         fi
+      env:
+        ROUTES_FILE: ${{ env.ROUTES_FILE }}
 
     - name: List current routes
       if: github.event.inputs.action == 'list'
@@ -115,14 +111,8 @@ jobs:
         fi
 
         echo "### Live Server Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} << 'EOF'
-          if [ -f /etc/nginx/conf.d/nextjs-apps.conf ]; then
-            cat /etc/nginx/conf.d/nextjs-apps.conf
-          else
-            echo "No nginx configuration found on server"
-          fi
-EOF >> $GITHUB_STEP_SUMMARY
+        echo '```nginx' >> $GITHUB_STEP_SUMMARY
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "if [ -f /etc/nginx/conf.d/nextjs-apps.conf ]; then cat /etc/nginx/conf.d/nextjs-apps.conf; else echo 'No nginx configuration found on server'; fi" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Add route
@@ -134,43 +124,14 @@ EOF >> $GITHUB_STEP_SUMMARY
         fi
 
         # Add route to JSON configuration
-        python3 << EOF
-        import json
-        import sys
-        from datetime import datetime
-
-        # Load existing routes
-        try:
-            with open('${{ env.ROUTES_FILE }}', 'r') as f:
-                config = json.load(f)
-        except FileNotFoundError:
-            config = {"routes": [], "version": "1.0"}
-
-        # Check if route already exists
-        route_name = "${{ github.event.inputs.route_name }}"
-        for route in config["routes"]:
-            if route["name"] == route_name:
-                print(f"ERROR: Route '{route_name}' already exists")
-                sys.exit(1)
-
-        # Add new route
-        new_route = {
-            "name": route_name,
-            "path": "${{ github.event.inputs.route_path }}",
-            "type": "${{ github.event.inputs.route_type || 'proxy' }}",
-            "target_port": "${{ github.event.inputs.target_port || '3000' }}",
-            "created": datetime.utcnow().isoformat() + "Z"
-        }
-
-        config["routes"].append(new_route)
-        config["last_updated"] = datetime.utcnow().isoformat() + "Z"
-
-        # Save updated configuration
-        with open('${{ env.ROUTES_FILE }}', 'w') as f:
-            json.dump(config, f, indent=2)
-
-        print(f"Added route: {new_route}")
-        EOF
+        echo "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwppbXBvcnQgb3MKZnJvbSBkYXRldGltZSBpbXBvcnQgZGF0ZXRpbWUKCnJvdXRlX25hbWUgPSBvcy5lbnZpcm9uLmdldCgiUk9VVEVfTkFNRSIsICIiKQpyb3V0ZV9wYXRoID0gb3MuZW52aXJvbi5nZXQoIlJPVVRFX1BBVEgiLCAiIikKcm91dGVfdHlwZSA9IG9zLmVudmlyb24uZ2V0KCJST1VURV9UWVBFIiwgInByb3h5IikKdGFyZ2V0X3BvcnQgPSBvcy5lbnZpcm9uLmdldCgiVEFSR0VUX1BPUlQiLCAiMzAwMCIpCgpyb3V0ZXNfZmlsZSA9IG9zLmVudmlyb24uZ2V0KCJST1VURVNfRklMRSIsICJuZ2lueC1yb3V0ZXMuanNvbiIpCnRyeToKICAgIHdpdGggb3Blbihyb3V0ZXNfZmlsZSwgInIiKSBhcyBmOgogICAgICAgIGNvbmZpZyA9IGpzb24ubG9hZChmKQpleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICBjb25maWcgPSB7InJvdXRlcyI6IFtdLCAidmVyc2lvbiI6ICIxLjAifQoKZm9yIHJvdXRlIGluIGNvbmZpZ1sicm91dGVzIl06CiAgICBpZiByb3V0ZVsibmFtZSJdID09IHJvdXRlX25hbWU6CiAgICAgICAgcHJpbnQoZiJFUlJPUjogUm91dGUge3JvdXRlX25hbWV9IGFscmVhZHkgZXhpc3RzIikKICAgICAgICBzeXMuZXhpdCgxKQoKbmV3X3JvdXRlID0gewogICAgIm5hbWUiOiByb3V0ZV9uYW1lLAogICAgInBhdGgiOiByb3V0ZV9wYXRoLAogICAgInR5cGUiOiByb3V0ZV90eXBlLAogICAgInRhcmdldF9wb3J0IjogdGFyZ2V0X3BvcnQsCiAgICAiY3JlYXRlZCI6IGRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpICsgIloiCn0KCmNvbmZpZ1sicm91dGVzIl0uYXBwZW5kKG5ld19yb3V0ZSkKY29uZmlnWyJsYXN0X3VwZGF0ZWQiXSA9IGRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpICsgIloiCgp3aXRoIG9wZW4ocm91dGVzX2ZpbGUsICJ3IikgYXMgZjoKICAgIGpzb24uZHVtcChjb25maWcsIGYsIGluZGVudD0yKQoKcHJpbnQoZiJBZGRlZCByb3V0ZToge25ld19yb3V0ZX0iKQ==" | base64 -d > add_route.py
+        python3 add_route.py
+      env:
+        ROUTE_NAME: ${{ github.event.inputs.route_name }}
+        ROUTE_PATH: ${{ github.event.inputs.route_path }}
+        ROUTE_TYPE: ${{ github.event.inputs.route_type || 'proxy' }}
+        TARGET_PORT: ${{ github.event.inputs.target_port || '3000' }}
+        ROUTES_FILE: ${{ env.ROUTES_FILE }}
 
     - name: Remove route
       if: github.event.inputs.action == 'remove'
@@ -181,106 +142,20 @@ EOF >> $GITHUB_STEP_SUMMARY
         fi
 
         # Remove route from JSON configuration
-        python3 << EOF
-        import json
-        import sys
-        from datetime import datetime
-
-        # Load existing routes
-        try:
-            with open('${{ env.ROUTES_FILE }}', 'r') as f:
-                config = json.load(f)
-        except FileNotFoundError:
-            print("ERROR: No routes configuration found")
-            sys.exit(1)
-
-        # Find and remove route
-        route_name = "${{ github.event.inputs.route_name }}"
-        initial_count = len(config["routes"])
-        config["routes"] = [r for r in config["routes"] if r["name"] != route_name]
-
-        if len(config["routes"]) == initial_count:
-            print(f"ERROR: Route '{route_name}' not found")
-            sys.exit(1)
-
-        config["last_updated"] = datetime.utcnow().isoformat() + "Z"
-
-        # Save updated configuration
-        with open('${{ env.ROUTES_FILE }}', 'w') as f:
-            json.dump(config, f, indent=2)
-
-        print(f"Removed route: {route_name}")
-        EOF
+        echo "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwppbXBvcnQgb3MKZnJvbSBkYXRldGltZSBpbXBvcnQgZGF0ZXRpbWUKCnJvdXRlX25hbWUgPSBvcy5lbnZpcm9uLmdldCgiUk9VVEVfTkFNRSIsICIiKQoKcm91dGVzX2ZpbGUgPSBvcy5lbnZpcm9uLmdldCgiUk9VVEVTX0ZJTEUiLCAibmdpbngtcm91dGVzLmpzb24iKQp0cnk6CiAgICB3aXRoIG9wZW4ocm91dGVzX2ZpbGUsICJyIikgYXMgZjoKICAgICAgICBjb25maWcgPSBqc29uLmxvYWQoZikKZXhjZXB0IEZpbGVOb3RGb3VuZEVycm9yOgogICAgcHJpbnQoIkVSUk9SOiBObyByb3V0ZXMgY29uZmlndXJhdGlvbiBmb3VuZCIpCiAgICBzeXMuZXhpdCgxKQoKaW5pdGlhbF9jb3VudCA9IGxlbihjb25maWdbInJvdXRlcyJdKQpjb25maWdbInJvdXRlcyJdID0gW3IgZm9yIHIgaW4gY29uZmlnWyJyb3V0ZXMiXSBpZiByWyJuYW1lIl0gIT0gcm91dGVfbmFtZV0KCmlmIGxlbihjb25maWdbInJvdXRlcyJdKSA9PSBpbml0aWFsX2NvdW50OgogICAgcHJpbnQoZiJFUlJPUjogUm91dGUge3JvdXRlX25hbWV9IG5vdCBmb3VuZCIpCiAgICBzeXMuZXhpdCgxKQoKY29uZmlnWyJsYXN0X3VwZGF0ZWQiXSA9IGRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpICsgIloiCgp3aXRoIG9wZW4ocm91dGVzX2ZpbGUsICJ3IikgYXMgZjoKICAgIGpzb24uZHVtcChjb25maWcsIGYsIGluZGVudD0yKQoKcHJpbnQoZiJSZW1vdmVkIHJvdXRlOiB7cm91dGVfbmFtZX0iKQ==" | base64 -d > remove_route.py
+        python3 remove_route.py
+      env:
+        ROUTE_NAME: ${{ github.event.inputs.route_name }}
+        ROUTES_FILE: ${{ env.ROUTES_FILE }}
 
     - name: Generate nginx configuration
       if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update' || github.event.inputs.action == 'reload'
       run: |
         # Generate nginx config from routes JSON
-        python3 << EOF
-        import json
-
-        # Load routes configuration
-        try:
-            with open('${{ env.ROUTES_FILE }}', 'r') as f:
-                config = json.load(f)
-        except FileNotFoundError:
-            config = {"routes": []}
-
-        # Generate nginx configuration
-        nginx_config = '''server {
-            listen 80 default_server;
-            server_name _;
-
-            # Security headers
-            add_header X-Frame-Options "SAMEORIGIN" always;
-            add_header X-Content-Type-Options "nosniff" always;
-            add_header X-XSS-Protection "1; mode=block" always;
-
-            client_max_body_size 10M;
-        '''
-
-        # Add routes
-        for route in config["routes"]:
-            if route["type"] == "proxy":
-                proxy_config = '''
-            # Route {name} - {path}
-            location {path} {{
-                proxy_pass http://127.0.0.1:{target_port};
-                proxy_http_version 1.1;
-                proxy_set_header Upgrade $http_upgrade;
-                proxy_set_header Connection 'upgrade';
-                proxy_set_header Host $host;
-                proxy_set_header X-Real-IP $remote_addr;
-                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                proxy_set_header X-Forwarded-Proto $scheme;
-                proxy_cache_bypass $http_upgrade;
-            }}'''.format(name=route["name"], path=route["path"], target_port=route["target_port"])
-                nginx_config += proxy_config
-            elif route["type"] == "health":
-                nginx_config += f'''
-            # Health check - {route["name"]}
-            location {route["path"]} {{
-                access_log off;
-                return 200 "healthy\\n";
-                add_header Content-Type text/plain;
-            }}'''
-            elif route["type"] == "redirect":
-                nginx_config += f'''
-            # Redirect - {route["name"]}
-            location {route["path"]} {{
-                return 301 {route.get("redirect_url", "/")};
-            }}'''
-
-        nginx_config += '''
-        }'''
-
-        # Save nginx configuration
-        with open('nginx.conf', 'w') as f:
-            f.write(nginx_config)
-
-        print("Generated nginx configuration:")
-        print(nginx_config)
-        EOF
+        echo "aW1wb3J0IGpzb24KaW1wb3J0IG9zCgpyb3V0ZXNfZmlsZSA9IG9zLmVudmlyb24uZ2V0KCJST1VURVNfRklMRSIsICJuZ2lueC1yb3V0ZXMuanNvbiIpCnRyeToKICAgIHdpdGggb3Blbihyb3V0ZXNfZmlsZSwgInIiKSBhcyBmOgogICAgICAgIGNvbmZpZyA9IGpzb24ubG9hZChmKQpleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICBjb25maWcgPSB7InJvdXRlcyI6IFtdfQoKbmdpbnhfY29uZmlnID0gIiIic2VydmVyIHsKICAgIGxpc3RlbiA4MCBkZWZhdWx0X3NlcnZlcjsKICAgIHNlcnZlcl9uYW1lIF87CgogICAgIyBTZWN1cml0eSBoZWFkZXJzCiAgICBhZGRfaGVhZGVyIFgtRnJhbWUtT3B0aW9ucyAiU0FNRU9SSUdJTiIgYWx3YXlzOwogICAgYWRkX2hlYWRlciBYLUNvbnRlbnQtVHlwZS1PcHRpb25zICJub3NuaWZmIiBhbHdheXM7CiAgICBhZGRfaGVhZGVyIFgtWFNTLVByb3RlY3Rpb24gIjE7IG1vZGU9YmxvY2siIGFsd2F5czsKCiAgICBjbGllbnRfbWF4X2JvZHlfc2l6ZSAxME07CiIiIgoKZm9yIHJvdXRlIGluIGNvbmZpZ1sicm91dGVzIl06CiAgICBpZiByb3V0ZVsidHlwZSJdID09ICJwcm94eSI6CiAgICAgICAgbmdpbnhfY29uZmlnICs9ICIiIgogICAgIyBSb3V0ZSB7bmFtZX0gLSB7cGF0aH0KICAgIGxvY2F0aW9uIHtwYXRofSB7ewogICAgICAgIHByb3h5X3Bhc3MgaHR0cDovLzEyNy4wLjAuMTp7dGFyZ2V0X3BvcnR9OwogICAgICAgIHByb3h5X2h0dHBfdmVyc2lvbiAxLjE7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBVcGdyYWRlICRodHRwX3VwZ3JhZGU7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBDb25uZWN0aW9uICd1cGdyYWRlJzsKICAgICAgICBwcm94eV9zZXRfaGVhZGVyIEhvc3QgJGhvc3Q7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLVJlYWwtSVAgJHJlbW90ZV9hZGRyOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgWC1Gb3J3YXJkZWQtRm9yICRwcm94eV9hZGRfeF9mb3J3YXJkZWRfZm9yOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgWC1Gb3J3YXJkZWQtUHJvdG8gJHNjaGVtZTsKICAgICAgICBwcm94eV9jYWNoZV9ieXBhc3MgJGh0dHBfdXBncmFkZTsKICAgIH19IiIiLmZvcm1hdChuYW1lPXJvdXRlWyJuYW1lIl0sIHBhdGg9cm91dGVbInBhdGgiXSwgdGFyZ2V0X3BvcnQ9cm91dGVbInRhcmdldF9wb3J0Il0pCiAgICBlbGlmIHJvdXRlWyJ0eXBlIl0gPT0gImhlYWx0aCI6CiAgICAgICAgbmdpbnhfY29uZmlnICs9ICIiIgogICAgIyBIZWFsdGggY2hlY2sgLSB7bmFtZX0KICAgIGxvY2F0aW9uIHtwYXRofSB7ewogICAgICAgIGFjY2Vzc19sb2cgb2ZmOwogICAgICAgIHJldHVybiAyMDAgImhlYWx0aHlcXG4iOwogICAgICAgIGFkZF9oZWFkZXIgQ29udGVudC1UeXBlIHRleHQvcGxhaW47CiAgICB9fSIiIi5mb3JtYXQobmFtZT1yb3V0ZVsibmFtZSJdLCBwYXRoPXJvdXRlWyJwYXRoIl0pCiAgICBlbGlmIHJvdXRlWyJ0eXBlIl0gPT0gInJlZGlyZWN0IjoKICAgICAgICByZWRpcmVjdF91cmwgPSByb3V0ZS5nZXQoInJlZGlyZWN0X3VybCIsICIvIikKICAgICAgICBuZ2lueF9jb25maWcgKz0gIiIiCiAgICAjIFJlZGlyZWN0IC0ge25hbWV9CiAgICBsb2NhdGlvbiB7cGF0aH0ge3sKICAgICAgICByZXR1cm4gMzAxIHtyZWRpcmVjdF91cmx9OwogICAgfX0iIiIuZm9ybWF0KG5hbWU9cm91dGVbIm5hbWUiXSwgcGF0aD1yb3V0ZVsicGF0aCJdLCByZWRpcmVjdF91cmw9cmVkaXJlY3RfdXJsKQoKbmdpbnhfY29uZmlnICs9ICIiIgp9IiIiCgp3aXRoIG9wZW4oIm5naW54LmNvbmYiLCAidyIpIGFzIGY6CiAgICBmLndyaXRlKG5naW54X2NvbmZpZykKCnByaW50KCJHZW5lcmF0ZWQgbmdpbnggY29uZmlndXJhdGlvbjoiKQpwcmludChuZ2lueF9jb25maWcp" | base64 -d > generate_nginx.py
+        python3 generate_nginx.py
+      env:
+        ROUTES_FILE: ${{ env.ROUTES_FILE }}
 
     - name: Deploy nginx configuration
       if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update' || github.event.inputs.action == 'reload'
@@ -291,49 +166,20 @@ EOF >> $GITHUB_STEP_SUMMARY
         scp -o ConnectTimeout=10 nginx.conf ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
 
         # Deploy and reload nginx
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} << 'EOF'
-          # Backup current config
-          sudo cp /etc/nginx/conf.d/nextjs-apps.conf /etc/nginx/conf.d/nextjs-apps.conf.backup.$(date +%s) 2>/dev/null || true
-
-          # Deploy new config
-          sudo cp /tmp/nginx.conf /etc/nginx/conf.d/nextjs-apps.conf
-
-          # Test nginx configuration
-          if sudo nginx -t; then
-            echo "✅ Nginx configuration test passed"
-            # Reload nginx
-            sudo systemctl reload nginx
-            echo "✅ Nginx reloaded successfully"
-          else
-            echo "❌ Nginx configuration test failed"
-            # Restore backup if it exists
-            sudo cp /etc/nginx/conf.d/nextjs-apps.conf.backup.$(ls -t /etc/nginx/conf.d/nextjs-apps.conf.backup.* 2>/dev/null | head -1 | cut -d. -f4) /etc/nginx/conf.d/nextjs-apps.conf 2>/dev/null || true
-            exit 1
-          fi
-        EOF
+        echo "IyEvYmluL2Jhc2gKc2V0IC1lCiMgQmFja3VwIGN1cnJlbnQgY29uZmlnCnN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvbmV4dGpzLWFwcHMuY29uZiAvZXRjL25naW54L2NvbmYuZC9uZXh0anMtYXBwcy5jb25mLmJhY2t1cC4kKGRhdGUgKyVzKSAyPi9kZXYvbnVsbCB8fCB0cnVlCgojIERlcGxveSBuZXcgY29uZmlnCnN1ZG8gY3AgL3RtcC9uZ2lueC5jb25mIC9ldGMvbmdpbngvY29uZi5kL25leHRqcy1hcHBzLmNvbmYKCiMgVGVzdCBuZ2lueCBjb25maWd1cmF0aW9uCmlmIHN1ZG8gbmdpbnggLXQ7IHRoZW4KICBlY2hvICLinIUgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IHBhc3NlZCIKICAjIFJlbG9hZCBuZ2lueAogIHN1ZG8gc3lzdGVtY3RsIHJlbG9hZCBuZ2lueAogIGVjaG8gIuKchSBOZ2lueCByZWxvYWRlZCBzdWNjZXNzZnVsbHkiCmVsc2UKICBlY2hvICLinYwgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IGZhaWxlZCIKICAjIFJlc3RvcmUgYmFja3VwIGlmIGl0IGV4aXN0cwogIHN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvbmV4dGpzLWFwcHMuY29uZi5iYWNrdXAuJChscyAtdCAvZXRjL25naW54L2NvbmYuZC9uZXh0anMtYXBwcy5jb25mLmJhY2t1cC4qIDI+L2Rldi9udWxsIHwgaGVhZCAtMSB8IGN1dCAtZC4gLWY0KSAvZXRjL25naW54L2NvbmYuZC9uZXh0anMtYXBwcy5jb25mIDI+L2Rldi9udWxsIHx8IHRydWUKICBleGl0IDEKZmkK" | base64 -d > deploy_nginx.sh
+        chmod +x deploy_nginx.sh
+        scp -o ConnectTimeout=10 deploy_nginx.sh ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "chmod +x /tmp/deploy_nginx.sh && /tmp/deploy_nginx.sh"
 
     - name: Verify deployment
       if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update' || github.event.inputs.action == 'reload'
       run: |
         echo "Verifying nginx deployment..."
 
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} << 'EOF'
-          # Check nginx status
-          if sudo systemctl is-active nginx >/dev/null; then
-            echo "✅ Nginx service is active"
-          else
-            echo "❌ Nginx service is not active"
-            exit 1
-          fi
-
-          # Test basic connectivity
-          if curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" localhost | grep -q "200\|404\|301\|302"; then
-            echo "✅ Nginx is responding"
-          else
-            echo "❌ Nginx not responding"
-            exit 1
-          fi
-        EOF
+        echo "IyEvYmluL2Jhc2gKc2V0IC1lCiMgQ2hlY2sgbmdpbnggc3RhdHVzCmlmIHN1ZG8gc3lzdGVtY3RsIGlzLWFjdGl2ZSBuZ2lueCA+L2Rldi9udWxsOyB0aGVuCiAgZWNobyAi4pyFIE5naW54IHNlcnZpY2UgaXMgYWN0aXZlIgplbHNlCiAgZWNobyAi4p2MIE5naW54IHNlcnZpY2UgaXMgbm90IGFjdGl2ZSIKICBleGl0IDEKZmkKCiMgVGVzdCBiYXNpYyBjb25uZWN0aXZpdHkKaWYgY3VybCAtcyAtLWNvbm5lY3QtdGltZW91dCA1IC1vIC9kZXYvbnVsbCAtdyAiJXtodHRwX2NvZGV9IiBsb2NhbGhvc3QgfCBncmVwIC1xICIyMDBcfDQwNFx8MzAxXHwzMDIiOyB0aGVuCiAgZWNobyAi4pyFIE5naW54IGlzIHJlc3BvbmRpbmciCmVsc2UKICBlY2hvICLinYwgTmdpbnggbm90IHJlc3BvbmRpbmciCiAgZXhpdCAxCmZpCg==" | base64 -d > verify_nginx.sh
+        chmod +x verify_nginx.sh
+        scp -o ConnectTimeout=10 verify_nginx.sh ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "chmod +x /tmp/verify_nginx.sh && /tmp/verify_nginx.sh"
 
     - name: Commit route changes
       if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update'
