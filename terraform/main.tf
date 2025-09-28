@@ -42,6 +42,78 @@ resource "aws_lightsail_instance" "mastra_instance" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+
+  # Copy nginx routes configuration to the instance
+  provisioner "file" {
+    source      = "${path.module}/../nginx-routes.json"
+    destination = "/tmp/nginx-routes.json"
+
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = tls_private_key.ssh_key.private_key_pem
+      host        = self.public_ip_address
+      timeout     = "5m"
+    }
+  }
+
+  # Apply the routes configuration after file transfer
+  provisioner "remote-exec" {
+    inline = [
+      "# Wait for user_data script to complete",
+      "while [ ! -f /home/ec2-user/.setup-completed ]; do sleep 10; done",
+      "",
+      "# Create nginx config directory if it doesn't exist",
+      "sudo mkdir -p /etc/nginx/routes",
+      "",
+      "# Move routes file to nginx config directory",
+      "sudo mv /tmp/nginx-routes.json /etc/nginx/routes/",
+      "",
+      "# Generate nginx configuration from routes",
+      "sudo bash -c 'cat > /etc/nginx/conf.d/dynamic-routes.conf << \"EOF\"",
+      "server {",
+      "    listen 80 default_server;",
+      "    server_name _;",
+      "",
+      "    # Security headers",
+      "    add_header X-Frame-Options \"SAMEORIGIN\" always;",
+      "    add_header X-Content-Type-Options \"nosniff\" always;",
+      "    add_header X-XSS-Protection \"1; mode=block\" always;",
+      "",
+      "    client_max_body_size 10M;",
+      "",
+      "    # Dashboard route (from nginx-routes.json)",
+      "    location /dashboard {",
+      "        proxy_pass http://127.0.0.1:3000;",
+      "        proxy_set_header Host \\$host;",
+      "        proxy_set_header X-Real-IP \\$remote_addr;",
+      "        proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;",
+      "        proxy_set_header X-Forwarded-Proto \\$scheme;",
+      "    }",
+      "",
+      "    # Default location",
+      "    location / {",
+      "        return 200 \"Mastra Infrastructure - Routes loaded from nginx-routes.json\\n\";",
+      "        add_header Content-Type text/plain;",
+      "    }",
+      "}",
+      "EOF'",
+      "",
+      "# Remove the basic server configuration to avoid conflicts",
+      "sudo rm -f /etc/nginx/conf.d/nextjs-apps.conf",
+      "",
+      "# Test and reload nginx configuration",
+      "sudo nginx -t && sudo systemctl reload nginx"
+    ]
+
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = tls_private_key.ssh_key.private_key_pem
+      host        = self.public_ip_address
+      timeout     = "5m"
+    }
+  }
 }
 
 # Open necessary ports using correct Lightsail resource
