@@ -158,12 +158,26 @@ jobs:
             echo "❌ Nginx service is not active"
           fi
 
-          # Test health endpoint
-          echo "Testing health endpoint..."
-          if curl -s --connect-timeout 5 localhost/health | grep -q "healthy"; then
-            echo "✅ Health endpoint is responding"
+          # Test basic nginx response
+          echo "Testing nginx basic response..."
+          if curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" localhost | grep -q "200\|404"; then
+            echo "✅ Nginx is responding"
           else
-            echo "⚠️ Health endpoint not responding yet"
+            echo "⚠️ Nginx not responding yet"
+          fi
+
+          # Check Docker registry (only accessible via SSH tunnel)
+          echo "Checking Docker registry..."
+          if docker ps | grep -q local-registry; then
+            echo "✅ Docker registry container is running"
+            if curl -s --connect-timeout 5 localhost:5000/v2/ | grep -q "{}"; then
+              echo "✅ Docker registry is responding to API calls (localhost only)"
+              echo "ℹ️  Registry is only accessible via SSH tunnel: ssh -L 5000:localhost:5000 ec2-user@<instance-ip>"
+            else
+              echo "⚠️ Docker registry not responding to API calls"
+            fi
+          else
+            echo "❌ Docker registry container is not running"
           fi
         EOF
 

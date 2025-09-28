@@ -88,38 +88,7 @@ server {
 
     client_max_body_size 10M;
 
-    # Health check endpoint
-    location /health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-
-    # Route /sanden to port 3001
-    location /sanden {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # Default route - everything else goes to port 3000
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-    }
+    # No routes configured - basic server only
 }
 EOF
 
@@ -162,7 +131,7 @@ sudo firewall-cmd --permanent --add-service=http
 sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --permanent --add-port=5432/tcp
 sudo firewall-cmd --reload
-log "Firewall configured and enabled"
+log "Firewall configured and enabled (Docker registry only accessible via SSH tunnel)"
 
 # Create shared Docker network
 log "Creating Docker network..."
@@ -170,6 +139,76 @@ if sudo -u ec2-user docker network create mastra-test-network --driver bridge 2>
     log "Docker network 'mastra-test-network' created"
 else
     log "Docker network 'mastra-test-network' already exists or failed to create"
+fi
+
+# Set up local Docker registry
+log "Setting up local Docker registry..."
+sudo mkdir -p /home/ec2-user/registry
+sudo chown ec2-user:ec2-user /home/ec2-user/registry
+
+# Create registry configuration
+sudo tee /home/ec2-user/registry/config.yml > /dev/null << 'EOF'
+version: 0.1
+log:
+  fields:
+    service: registry
+storage:
+  cache:
+    blobdescriptor: inmemory
+  filesystem:
+    rootdirectory: /var/lib/registry
+http:
+  addr: :5000
+  headers:
+    X-Content-Type-Options: [nosniff]
+health:
+  storagedriver:
+    enabled: true
+    interval: 10s
+    threshold: 3
+EOF
+
+# Start Docker registry container
+log "Starting Docker registry container..."
+if sudo -u ec2-user docker run -d \
+  --restart=always \
+  --name local-registry \
+  -p 5000:5000 \
+  -v /home/ec2-user/registry:/var/lib/registry \
+  -v /home/ec2-user/registry/config.yml:/etc/docker/registry/config.yml \
+  --network mastra-test-network \
+  registry:2; then
+    log "Docker registry started successfully"
+else
+    log "Failed to start Docker registry"
+fi
+
+# Configure Docker daemon to allow insecure registry
+log "Configuring Docker daemon for insecure registry..."
+sudo mkdir -p /etc/docker
+sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
+{
+  "insecure-registries": ["localhost:5000", "127.0.0.1:5000"]
+}
+EOF
+
+# Restart Docker service to apply configuration
+log "Restarting Docker service to apply registry configuration..."
+sudo systemctl restart docker
+
+# Wait for Docker to restart
+log "Waiting for Docker to restart..."
+while ! sudo docker info >/dev/null 2>&1; do
+    log "Waiting for Docker daemon to restart..."
+    sleep 2
+done
+
+# Restart the registry after Docker restart
+log "Restarting Docker registry after Docker daemon restart..."
+if sudo -u ec2-user docker start local-registry; then
+    log "Docker registry restarted successfully"
+else
+    log "Failed to restart Docker registry"
 fi
 
 # Set proper log file permissions
@@ -194,6 +233,19 @@ if systemctl is-active --quiet docker; then
     log "✅ Docker service is active"
 else
     log "❌ Docker service is not active"
+fi
+
+# Verify Docker registry is running
+if sudo -u ec2-user docker ps | grep -q local-registry; then
+    log "✅ Docker registry is running"
+    # Test registry health
+    if curl -s http://localhost:5000/v2/ | grep -q "{}"; then
+        log "✅ Docker registry is responding to health checks"
+    else
+        log "⚠️ Docker registry is not responding to health checks"
+    fi
+else
+    log "❌ Docker registry is not running"
 fi
 
 # Create a success marker file

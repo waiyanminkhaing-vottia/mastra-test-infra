@@ -1,0 +1,6 @@
+{
+  "routes": [],
+  "last_updated": "2025-01-14T00:00:00Z",
+  "version": "1.0",
+  "description": "Dynamic nginx route configuration for Mastra infrastructure"
+}

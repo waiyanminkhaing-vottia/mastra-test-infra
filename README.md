@@ -1,351 +1,301 @@
 # Mastra Test Infrastructure
 
-Development infrastructure for Mastra test environment using AWS Lightsail and Terraform with proper development workflows and SSH key management.
+A comprehensive infrastructure setup for deploying applications on AWS Lightsail with dynamic nginx route management and private Docker registry.
 
-## Architecture
+## 🏗️ Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                AWS Lightsail                    │
-│  ┌─────────────────────────────────────────┐   │
-│  │        Amazon Linux 2023 Instance       │   │
-│  │                                         │   │
-│  │  ┌─────────────────────────────────┐   │   │
-│  │  │            Nginx                │   │   │
-│  │  │         (Port 80/443)           │   │   │
-│  │  │                                 │   │   │
-│  │  │  /         →  Port 3000        │   │   │
-│  │  │  /sanden   →  Port 3001        │   │   │
-│  │  │  /health   →  Health Check     │   │   │
-│  │  └─────────────────────────────────┘   │   │
-│  │                                         │   │
-│  │  ┌───────────┐ ┌───────────┐          │   │
-│  │  │ Main App  │ │Sanden App │          │   │
-│  │  │  :3000    │ │  :3001    │          │   │
-│  │  │(Next.js)  │ │(Next.js)  │          │   │
-│  │  └───────────┘ └───────────┘          │   │
-│  │                                         │   │
-│  │  ┌─────────────────────────────────┐   │   │
-│  │  │           PostgreSQL            │   │   │
-│  │  │            :5432               │   │   │
-│  │  └─────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
-```
+- **AWS Lightsail Instance** - Amazon Linux 2023
+- **Docker & Docker Compose** - Container orchestration
+- **Nginx** - Reverse proxy with dynamic route management
+- **Private Docker Registry** - SSH-tunnel accessible only
+- **PostgreSQL** - Database with pgvector extension
+- **Terraform** - Infrastructure as Code
+- **GitHub Actions** - CI/CD and route management
 
-## URL Routing
+## 🚀 Quick Start
 
-| URL | Docker Port | Application |
-|-----|-------------|-------------|
-| `http://demo.vottia.me/` | 3000 | Main Next.js App |
-| `http://demo.vottia.me/sanden` | 3001 | Sanden App |
-| `http://demo.vottia.me/health` | - | Health Check Endpoint |
-
-## 🚀 Quick Start for Development
-
-### Prerequisites
-- [Terraform](https://terraform.io) >= 1.0
-- [AWS CLI](https://aws.amazon.com/cli/)
-- [GitHub CLI](https://cli.github.com/) (optional, for automated setup)
-- AWS account with Lightsail access
-
-### 1. Development Setup
-
-Run the automated setup script:
-```bash
-./scripts/setup-dev.sh
-```
-
-This will guide you through:
-- Setting up GitHub secrets and variables
-- Configuring the development environment
-- Explaining the deployment process
-
-### 2. GitHub Repository Configuration
-
-**Secrets** (Settings > Secrets and variables > Actions):
-- `AWS_ACCESS_KEY_ID` - Your AWS access key ID
-- `AWS_SECRET_ACCESS_KEY` - Your AWS secret access key
-- `POSTGRES_PASSWORD` - Password for PostgreSQL database
-
-**Variables**:
-- `AWS_REGION` - AWS region (default: ap-northeast-1)
-- `POSTGRES_DB` - Main PostgreSQL database name
-- `POSTGRES_USER` - PostgreSQL username
-- `AGENT_POSTGRES_DB` - Agent PostgreSQL database name
-
-### 3. Deploy Infrastructure
-
-**Option A: GitHub Actions (Recommended)**
-1. Go to Actions tab → "Deploy to Lightsail"
-2. Click "Run workflow"
-3. Infrastructure will be created with environment-based naming (dev-mastra-test-*)
-
-**Option B: Local Deployment**
-```bash
-cd terraform
-terraform init
-terraform plan    # Preview changes
-terraform apply   # Create infrastructure
-terraform destroy # Delete everything
-```
-
-### 4. Get SSH Access
-
-After deployment, copy SSH keys to another repository for team access:
-```bash
-./scripts/copy-keys-to-repo.sh /path/to/another/repo dev
-```
-
-This creates:
-- `keys/dev/dev-mastra-test-private-key.pem` - SSH private key
-- `keys/dev/dev-mastra-test-public-key.pub` - SSH public key
-- `keys/dev/dev-connection-info.txt` - Connection instructions
-- `keys/README.md` - Usage documentation
-
-### 2. Configure DNS
-
-After deployment:
-1. Note the nameservers from terraform outputs
-2. Configure nameservers at your domain registrar (e.g., Namecheap, GoDaddy)
-3. Wait 5-30 minutes for DNS propagation
-
-### 3. Deploy Applications
-
-SSH into your instance and run your Next.js containers:
+### 1. Deploy Infrastructure
 
 ```bash
-# SSH to instance
-ssh -i ~/.ssh/mastra-key ec2-user@<INSTANCE_IP>
-
-# Run main app (routes to /)
-docker run -d -p 3000:3000 --name main-app your-main-nextjs-image
-
-# Run sanden app (routes to /sanden)
-docker run -d -p 3001:3000 --name sanden-app your-sanden-nextjs-image
-
-# Verify containers
-docker ps
+# Go to GitHub Actions → "Manage Infrastructure"
+# Select Action: "apply"
 ```
 
-## Infrastructure Details
+This will create:
+- Lightsail instance with static IP
+- Route53 DNS record
+- Security groups and firewall rules
+- Docker registry (SSH-tunnel only)
+- Nginx with basic configuration
+
+### 2. Manage Routes Dynamically
+
+```bash
+# Go to GitHub Actions → "Manage Nginx Routes"
+# Add a health check:
+Action: add
+Route Name: health
+Route Path: /health
+Route Type: health
+
+# Add API service:
+Action: add
+Route Name: api-service
+Route Path: /api
+Target Port: 3001
+Route Type: proxy
+```
+
+## 📁 Project Structure
+
+```
+├── .github/workflows/
+│   ├── infrastructure.yml    # Main infrastructure deployment
+│   ├── deploy.yml           # Application deployment
+│   └── manage-routes.yml    # Dynamic nginx route management
+├── terraform/
+│   ├── main.tf              # Lightsail infrastructure
+│   ├── variables.tf         # Configuration variables
+│   ├── outputs.tf           # Infrastructure outputs
+│   └── user_data.sh         # Instance initialization script
+├── nginx-routes.json        # Dynamic route configuration
+├── docker-compose.yml       # Local development services
+└── README.md               # This file
+```
+
+## 🛠️ Infrastructure Components
 
 ### Lightsail Instance
-- **Size**: 2 vCPU, 4 GB RAM, 80 GB SSD (`medium_2_0`)
-- **OS**: Amazon Linux 2023 (ec2-user)
-- **Region**: Configurable via `aws_region` variable
+- **OS**: Amazon Linux 2023
+- **Bundle**: Configurable (default: nano_2_0)
+- **Ports**: 22 (SSH), 80 (HTTP), 443 (HTTPS), 5432 (PostgreSQL)
+- **Storage**: Persistent volumes for Docker registry and database
 
-### Pre-installed Software
-- **Docker & Docker Compose**
-- **Nginx** (configured as reverse proxy)
-- **Development tools**: git, vim, htop, curl, wget, jq
-- **Route53 DNS**: Automatic hosted zone and A record creation
-
-### Open Ports
-- **22** (SSH)
-- **80** (HTTP)
-- **443** (HTTPS)
-- **5432** (PostgreSQL)
+### Docker Services
+- **Docker Engine** - Latest version
+- **Docker Compose** - For multi-container applications
+- **Private Registry** - Accessible via SSH tunnel on port 5000
+- **Network**: `mastra-test-network` bridge network
 
 ### Nginx Configuration
+- **Dynamic Routes** - Managed via GitHub Actions
+- **Security Headers** - OWASP recommended headers
+- **Health Checks** - Built-in monitoring endpoints
+- **Backup System** - Automatic configuration backups
 
-The Nginx reverse proxy is automatically configured with:
-- Path-based routing to Docker containers
-- Security headers
-- Health check endpoint
-- WebSocket support for Next.js development
+## 🔧 Configuration
 
-## Managing Applications
-
-### View Container Status
-```bash
-docker ps -a
-docker logs main-app
-docker logs sanden-app
+### Required GitHub Secrets
+```
+AWS_ACCESS_KEY_ID       # AWS access key
+AWS_SECRET_ACCESS_KEY   # AWS secret key
 ```
 
-### Restart Applications
-```bash
-docker restart main-app
-docker restart sanden-app
+### Required GitHub Variables
+```
+AWS_REGION             # AWS region (default: ap-northeast-1)
 ```
 
-### Update Applications
-```bash
-# Pull new image
-docker pull your-main-nextjs-image:latest
+### Terraform Variables
+Edit `terraform/variables.tf` to customize:
+- Instance bundle size
+- Domain configuration
+- Environment settings
 
-# Stop and remove old container
-docker stop main-app && docker rm main-app
+## 🌐 Dynamic Route Management
 
-# Run updated container
-docker run -d -p 3000:3000 --name main-app your-main-nextjs-image:latest
-```
+### Available Route Types
 
-## Adding New Applications
-
-To add a new Next.js application:
-
-### 1. Update Nginx Configuration
-
-SSH to instance and edit Nginx config:
-```bash
-sudo vim /etc/nginx/sites-available/nextjs-apps
-```
-
-Add new location block:
-```nginx
-# Route /new-app to port 3002
-location /new-app {
-    proxy_pass http://127.0.0.1:3002;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
+#### Proxy Routes
+Route requests to local applications:
+```json
+{
+  "name": "api-service",
+  "path": "/api",
+  "type": "proxy",
+  "target_port": "3001"
 }
 ```
 
-### 2. Reload Nginx
-```bash
-sudo nginx -t && sudo systemctl reload nginx
+#### Health Checks
+Simple health monitoring endpoints:
+```json
+{
+  "name": "health",
+  "path": "/health",
+  "type": "health"
+}
 ```
 
-### 3. Deploy Container
-```bash
-docker run -d -p 3002:3000 --name new-app your-new-nextjs-image
+#### Redirects
+HTTP redirections:
+```json
+{
+  "name": "redirect-home",
+  "path": "/old-path",
+  "type": "redirect",
+  "redirect_url": "/"
+}
 ```
 
-### 4. Update README
-Add the new route to the URL routing table above.
+### Route Operations
 
-## Monitoring & Debugging
+| Operation | Description | Required Fields |
+|-----------|-------------|----------------|
+| `list` | Show current routes | None |
+| `add` | Create new route | route_name, route_path, route_type |
+| `remove` | Delete route | route_name |
+| `update` | Modify route | route_name + fields to update |
+| `reload` | Regenerate config | None |
 
-### Health Checks
+## 🐳 Docker Registry Usage
 
-**Quick Health Check:**
+The private Docker registry is only accessible via SSH tunnel for security.
+
+### Setup SSH Tunnel
 ```bash
-# Check all services automatically
-./scripts/quick-check.sh
+ssh -L 5000:localhost:5000 -i /path/to/ssh-key ec2-user@<instance-ip>
 ```
 
-**Comprehensive Service Check:**
+### Use Registry
 ```bash
-# Detailed check with instance IP and SSH key
-./scripts/check-services.sh <INSTANCE_IP> [ssh-key-path]
+# Tag image
+docker tag my-app:latest localhost:5000/my-app:latest
 
-# Or let it auto-detect from Terraform
-./scripts/check-services.sh
+# Push to registry
+docker push localhost:5000/my-app:latest
+
+# Pull from registry
+docker pull localhost:5000/my-app:latest
 ```
 
-**Manual Checks:**
-```bash
-# Application health endpoint
-curl http://demo.vottia.me/health
+## 🗄️ Database
 
-# On the instance directly:
-sudo systemctl status nginx docker
-sudo docker ps
-sudo nginx -t
+PostgreSQL with pgvector extension for vector operations.
+
+### Connection Details
+```bash
+Host: <instance-ip>
+Port: 5432
+Database: ${POSTGRES_DB}
+User: ${POSTGRES_USER}
+Password: ${POSTGRES_PASSWORD}
 ```
 
-### Log Files
-- **Setup logs**: `/home/ec2-user/setup.log`
-- **Nginx access**: `/var/log/nginx/access.log`
-- **Nginx errors**: `/var/log/nginx/error.log`
-- **Container logs**: `docker logs <container-name>`
-
-### Common Issues
-
-**1. Applications not accessible**
-- Check DNS A record configuration
-- Verify containers are running: `docker ps`
-- Check Nginx status: `sudo systemctl status nginx`
-
-**2. Container fails to start**
-- Check port conflicts: `netstat -tulpn | grep :3000`
-- Review container logs: `docker logs <container-name>`
-
-**3. Nginx configuration errors**
-- Test config: `sudo nginx -t`
-- Check error logs: `sudo tail -f /var/log/nginx/error.log`
-
-## Terraform Outputs
-
-After deployment, you'll see these useful outputs:
-- `instance_public_ip`: Static IP address
-- `app_urls`: Direct URLs to your applications
-- `dns_configuration`: DNS A record information
-- `route53_info`: Hosted zone ID and nameservers for domain setup
-- `docker_ports`: Port mapping reference
-- `ssh_command`: Ready-to-use SSH command
-- `health_check_command`: Health check script command
-- `setup_command`: Manual setup script command
-
-## Development Workflow
-
-1. **Make infrastructure changes** → Push to main branch (auto-deploys)
-2. **Update applications** → Build new images and update containers
-3. **Add new apps** → Update Nginx config and deploy containers
-4. **Test changes** → Use health endpoints and logs for debugging
-
-## Cost Estimates
-
-Monthly costs (ap-northeast-1 region):
-- **Lightsail Medium**: ~$20/month
-- **Static IP**: Free with Lightsail
-- **Data Transfer**: 3TB included
-
-Perfect for development and testing environments.
-
-## 🗑️ Cleanup & Resource Deletion
-
-### Option A: GitHub Actions
-1. Go to Actions → "Manage Infrastructure"
-2. Click "Run workflow"
-3. Select action: `destroy`
-4. The workflow will:
-   - List all resources to be deleted
-   - Destroy all infrastructure
-   - Verify cleanup completion
-
-### Option B: Local Cleanup
+### Local Development
 ```bash
-# Interactive script with confirmations
-./scripts/cleanup-resources.sh
+docker-compose up postgres
+```
 
-# Or directly with Terraform
+## 🚀 Deployment Workflow
+
+### 1. Infrastructure Deployment
+```bash
+# Via GitHub Actions
+Actions → "Manage Infrastructure" → Run workflow → Action: "apply"
+
+# Via Terraform (local)
 cd terraform
-terraform destroy
+terraform init
+terraform plan
+terraform apply
 ```
 
-### What Gets Deleted
-- ✅ Lightsail instance (stops all running containers)
-- ✅ Static IP address
-- ✅ SSH key pair
-- ✅ Security group rules
-- ✅ All associated data
+### 2. Application Deployment
+```bash
+# Via GitHub Actions
+Actions → "Deploy Application" → Run workflow
+```
 
-**⚠️ Warning:** Destruction is permanent and cannot be undone!
+### 3. Route Management
+```bash
+# Via GitHub Actions
+Actions → "Manage Nginx Routes" → Run workflow
+```
 
-## Troubleshooting Checklist
+## 🔍 Monitoring & Debugging
 
-- [ ] DNS A record points to correct IP
-- [ ] Containers are running (`docker ps`)
-- [ ] Nginx is running (`sudo systemctl status nginx`)
-- [ ] No port conflicts (`netstat -tulpn`)
-- [ ] Firewall allows traffic (`sudo ufw status`)
-- [ ] Check application logs (`docker logs <name>`)
+### Check Infrastructure Status
+```bash
+# Via GitHub Actions workflow logs
+# Or SSH into instance:
+ssh -i /path/to/key ec2-user@<instance-ip>
+
+# Check services
+sudo systemctl status nginx
+sudo systemctl status docker
+docker ps
+
+# Check logs
+sudo journalctl -u nginx -f
+docker logs <container-name>
+```
+
+### Verify Routes
+```bash
+# Test health endpoint
+curl http://<instance-ip>/health
+
+# Test specific route
+curl http://<instance-ip>/api/status
+```
+
+## 🛡️ Security Features
+
+- **SSH Key Authentication** - No password access
+- **Firewall Configuration** - Only required ports open
+- **Private Registry** - SSH tunnel access only
+- **Security Headers** - OWASP recommended nginx headers
+- **Configuration Backups** - Automatic backup before changes
+- **Git Tracking** - All configuration changes versioned
+
+## 🔄 Backup & Recovery
+
+### Infrastructure Backup
+- Terraform state is managed remotely
+- Configuration files are version controlled
+- Automatic nginx configuration backups
+
+### Emergency Recovery
+```bash
+# Restore nginx configuration
+ssh ec2-user@<instance-ip>
+sudo cp /etc/nginx/conf.d/nextjs-apps.conf.backup.* /etc/nginx/conf.d/nextjs-apps.conf
+sudo systemctl reload nginx
+
+# Rebuild infrastructure
+terraform destroy
+terraform apply
+```
+
+## 📚 Documentation
+
+- **Route Management** - See "Dynamic Route Management" section above
+- **Terraform Documentation** - See `terraform/` directory
+- **GitHub Actions** - See `.github/workflows/` directory
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes
+4. Test with `terraform plan`
+5. Submit a pull request
+
+## 📄 License
+
+This infrastructure configuration is provided as-is for the Mastra project.
+
+## 🆘 Support
+
+For issues and questions:
+1. Check GitHub Actions workflow logs
+2. Review server logs via SSH
+3. Check Terraform state and outputs
+4. Refer to documentation in this repository
 
 ---
 
-## Support
-
-For issues:
-1. Check the troubleshooting section above
-2. Review setup logs: `/home/ec2-user/setup.log`
-3. Verify container and service status
-4. Check GitHub Actions workflow logs
+**Last Updated**: January 2025
+**Infrastructure Version**: 1.0
+**Terraform Version**: >= 1.0
