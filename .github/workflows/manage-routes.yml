@@ -112,7 +112,7 @@ jobs:
 
         echo "### Live Server Configuration:" >> $GITHUB_STEP_SUMMARY
         echo '```nginx' >> $GITHUB_STEP_SUMMARY
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "if [ -f /etc/nginx/conf.d/nextjs-apps.conf ]; then cat /etc/nginx/conf.d/nextjs-apps.conf; else echo 'No nginx configuration found on server'; fi" >> $GITHUB_STEP_SUMMARY
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "if [ -f /etc/nginx/conf.d/dynamic-routes.conf ]; then cat /etc/nginx/conf.d/dynamic-routes.conf; else echo 'No nginx configuration found on server'; fi" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Add route
@@ -166,7 +166,7 @@ jobs:
         scp -o ConnectTimeout=10 nginx.conf ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
 
         # Deploy and reload nginx
-        echo "IyEvYmluL2Jhc2gKc2V0IC1lCiMgQmFja3VwIGN1cnJlbnQgY29uZmlnCnN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvbmV4dGpzLWFwcHMuY29uZiAvZXRjL25naW54L2NvbmYuZC9uZXh0anMtYXBwcy5jb25mLmJhY2t1cC4kKGRhdGUgKyVzKSAyPi9kZXYvbnVsbCB8fCB0cnVlCgojIERlcGxveSBuZXcgY29uZmlnCnN1ZG8gY3AgL3RtcC9uZ2lueC5jb25mIC9ldGMvbmdpbngvY29uZi5kL25leHRqcy1hcHBzLmNvbmYKCiMgVGVzdCBuZ2lueCBjb25maWd1cmF0aW9uCmlmIHN1ZG8gbmdpbnggLXQ7IHRoZW4KICBlY2hvICLinIUgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IHBhc3NlZCIKICAjIFJlbG9hZCBuZ2lueAogIHN1ZG8gc3lzdGVtY3RsIHJlbG9hZCBuZ2lueAogIGVjaG8gIuKchSBOZ2lueCByZWxvYWRlZCBzdWNjZXNzZnVsbHkiCmVsc2UKICBlY2hvICLinYwgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IGZhaWxlZCIKICAjIFJlc3RvcmUgYmFja3VwIGlmIGl0IGV4aXN0cwogIHN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvbmV4dGpzLWFwcHMuY29uZi5iYWNrdXAuJChscyAtdCAvZXRjL25naW54L2NvbmYuZC9uZXh0anMtYXBwcy5jb25mLmJhY2t1cC4qIDI+L2Rldi9udWxsIHwgaGVhZCAtMSB8IGN1dCAtZC4gLWY0KSAvZXRjL25naW54L2NvbmYuZC9uZXh0anMtYXBwcy5jb25mIDI+L2Rldi9udWxsIHx8IHRydWUKICBleGl0IDEKZmkK" | base64 -d > deploy_nginx.sh
+        echo "IyEvYmluL2Jhc2gKc2V0IC1lCiMgQmFja3VwIGN1cnJlbnQgY29uZmlnCnN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvZHluYW1pYy1yb3V0ZXMuY29uZiAvZXRjL25naW54L2NvbmYuZC9keW5hbWljLXJvdXRlcy5jb25mLmJhY2t1cC4kKGRhdGUgKyVzKSAyPi9kZXYvbnVsbCB8fCB0cnVlCgojIERlcGxveSBuZXcgY29uZmlnCnN1ZG8gY3AgL3RtcC9uZ2lueC5jb25mIC9ldGMvbmdpbngvY29uZi5kL2R5bmFtaWMtcm91dGVzLmNvbmYKCiMgVGVzdCBuZ2lueCBjb25maWd1cmF0aW9uCmlmIHN1ZG8gbmdpbnggLXQ7IHRoZW4KICBlY2hvICLinIUgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IHBhc3NlZCIKICAjIFJlbG9hZCBuZ2lueAogIHN1ZG8gc3lzdGVtY3RsIHJlbG9hZCBuZ2lueAogIGVjaG8gIuKchSBOZ2lueCByZWxvYWRlZCBzdWNjZXNzZnVsbHkiCmVsc2UKICBlY2hvICLinYwgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IGZhaWxlZCIKICAjIFJlc3RvcmUgYmFja3VwIGlmIGl0IGV4aXN0cwogIHN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvZHluYW1pYy1yb3V0ZXMuY29uZi5iYWNrdXAuJChscyAtdCAvZXRjL25naW54L2NvbmYuZC9keW5hbWljLXJvdXRlcy5jb25mLmJhY2t1cC4qIDI+L2Rldi9udWxsIHwgaGVhZCAtMSB8IGN1dCAtZC4gLWY0KSAvZXRjL25naW54L2NvbmYuZC9keW5hbWljLXJvdXRlcy5jb25mIDI+L2Rldi9udWxsIHx8IHRydWUKICBleGl0IDEKZmkK" | base64 -d > deploy_nginx.sh
         chmod +x deploy_nginx.sh
         scp -o ConnectTimeout=10 deploy_nginx.sh ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
         ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "chmod +x /tmp/deploy_nginx.sh && /tmp/deploy_nginx.sh"
