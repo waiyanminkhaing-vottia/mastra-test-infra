@@ -22,9 +22,9 @@ variable "environment" {
 }
 
 variable "instance_bundle_id" {
-  description = "Lightsail instance bundle ID (2 vCPU, 4 GB RAM, 80 GB SSD)"
+  description = "Lightsail instance bundle ID (2 vCPU, 8 GB RAM, 160 GB SSD)"
   type        = string
-  default     = "medium_2_0"
+  default     = "large_2_0"
 }
 
 variable "domain_name" {

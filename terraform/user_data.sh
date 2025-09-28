@@ -72,6 +72,35 @@ fi
 log "Installing additional tools..."
 sudo dnf install -y htop vim unzip curl wget jq || log "Some additional tools failed to install, continuing..."
 
+# Install Ollama for running SLMs
+log "Installing Ollama..."
+if curl -fsSL https://ollama.com/install.sh | sh; then
+    log "Ollama installed successfully"
+
+    # Start Ollama service as ec2-user
+    log "Starting Ollama service..."
+    sudo -u ec2-user bash -c 'export PATH=$PATH:/usr/local/bin && nohup ollama serve > /home/ec2-user/ollama.log 2>&1 &'
+
+    # Wait for Ollama to start
+    log "Waiting for Ollama to start..."
+    sleep 10
+
+    # Test Ollama installation
+    if sudo -u ec2-user bash -c 'export PATH=$PATH:/usr/local/bin && ollama list' >/dev/null 2>&1; then
+        log "✅ Ollama is running and accessible"
+
+        # Download a small model for testing
+        log "Downloading Gemma 2B model (this may take a few minutes)..."
+        sudo -u ec2-user bash -c 'export PATH=$PATH:/usr/local/bin && ollama pull gemma:2b' || log "⚠️ Failed to download model, but Ollama is installed"
+
+    else
+        log "⚠️ Ollama installed but not responding"
+    fi
+else
+    log "ERROR: Ollama installation failed"
+    # Continue without Ollama
+fi
+
 # Install nginx with cache refresh
 log "Installing nginx..."
 sudo dnf clean all
@@ -281,6 +310,32 @@ if command -v git >/dev/null 2>&1; then
     log "✅ Git is installed: $GIT_VERSION"
 else
     log "❌ Git is not installed"
+fi
+
+# Verify Ollama installation
+if command -v ollama >/dev/null 2>&1; then
+    OLLAMA_VERSION=$(ollama --version 2>/dev/null || echo "unknown version")
+    log "✅ Ollama is installed: $OLLAMA_VERSION"
+
+    # Check if Ollama is running
+    if pgrep -f "ollama serve" >/dev/null; then
+        log "✅ Ollama service is running"
+
+        # List available models
+        MODELS=$(sudo -u ec2-user bash -c 'export PATH=$PATH:/usr/local/bin && ollama list 2>/dev/null | grep -v "NAME"' || echo "")
+        if [ -n "$MODELS" ]; then
+            log "✅ Ollama models available:"
+            echo "$MODELS" | while read line; do
+                log "   - $line"
+            done
+        else
+            log "⚠️ No Ollama models installed yet"
+        fi
+    else
+        log "⚠️ Ollama is installed but not running"
+    fi
+else
+    log "❌ Ollama is not installed"
 fi
 
 # Verify Docker registry is running
