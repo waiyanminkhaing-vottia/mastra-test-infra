@@ -58,34 +58,32 @@ jobs:
     - name: Get instance details
       id: instance
       run: |
-        cd terraform
+        echo "Setting up connection details..."
 
-        # Check if terraform state exists
-        if [ ! -f terraform.tfstate ]; then
-          echo "ERROR: No Terraform state found. Please run infrastructure deployment first."
+        # Get host from Terraform variables (same as deploy.yml)
+        LIGHTSAIL_HOST=$(grep 'default.*=' terraform/variables.tf | grep 'test.dev-maestra.vottia.me' | sed 's/.*"\(.*\)".*/\1/')
+        LIGHTSAIL_USER="ec2-user"
+
+        if [ -z "$LIGHTSAIL_HOST" ]; then
+          echo "ERROR: Could not extract host from terraform/variables.tf"
           exit 1
         fi
 
-        # Get instance IP and SSH key
-        INSTANCE_IP=$(terraform output -raw instance_public_ip 2>/dev/null || echo "")
-        SSH_KEY=$(terraform output -raw ssh_private_key 2>/dev/null || echo "")
+        echo "Host: $LIGHTSAIL_HOST"
+        echo "User: $LIGHTSAIL_USER"
 
-        if [ -z "$INSTANCE_IP" ] || [ -z "$SSH_KEY" ]; then
-          echo "ERROR: Could not retrieve instance details from Terraform state"
-          exit 1
-        fi
-
-        echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
-        echo "ssh_key<<EOF" >> $GITHUB_OUTPUT
-        echo "$SSH_KEY" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "instance_ip=$LIGHTSAIL_HOST" >> $GITHUB_OUTPUT
+        echo "instance_user=$LIGHTSAIL_USER" >> $GITHUB_OUTPUT
 
     - name: Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ steps.instance.outputs.ssh_key }}" > ~/.ssh/id_rsa
+        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ steps.instance.outputs.instance_ip }} >> ~/.ssh/known_hosts
+
+        # Test SSH connection
+        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "echo 'SSH connection successful for route management'"
 
     - name: Initialize routes file if not exists
       run: |
@@ -115,7 +113,7 @@ jobs:
         fi
 
         echo "### Live Server Configuration:" >> $GITHUB_STEP_SUMMARY
-        ssh -o ConnectTimeout=10 ec2-user@${{ steps.instance.outputs.instance_ip }} << 'EOF'
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} << 'EOF'
           echo '```'
           if [ -f /etc/nginx/conf.d/nextjs-apps.conf ]; then
             cat /etc/nginx/conf.d/nextjs-apps.conf
@@ -287,10 +285,10 @@ jobs:
         echo "Deploying nginx configuration to server..."
 
         # Copy nginx config to server
-        scp -o ConnectTimeout=10 nginx.conf ec2-user@${{ steps.instance.outputs.instance_ip }}:/tmp/
+        scp -o ConnectTimeout=10 nginx.conf ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
 
         # Deploy and reload nginx
-        ssh -o ConnectTimeout=10 ec2-user@${{ steps.instance.outputs.instance_ip }} << 'EOF'
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} << 'EOF'
           # Backup current config
           sudo cp /etc/nginx/conf.d/nextjs-apps.conf /etc/nginx/conf.d/nextjs-apps.conf.backup.$(date +%s) 2>/dev/null || true
 
@@ -316,7 +314,7 @@ jobs:
       run: |
         echo "Verifying nginx deployment..."
 
-        ssh -o ConnectTimeout=10 ec2-user@${{ steps.instance.outputs.instance_ip }} << 'EOF'
+        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} << 'EOF'
           # Check nginx status
           if sudo systemctl is-active nginx >/dev/null; then
             echo "✅ Nginx service is active"
