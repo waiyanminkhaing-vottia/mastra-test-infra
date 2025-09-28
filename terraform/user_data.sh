@@ -58,9 +58,19 @@ sudo mkdir -p /home/ec2-user/app
 sudo chown ec2-user:ec2-user /home/ec2-user/app
 sudo chmod 755 /home/ec2-user/app
 
+# Install git first (essential for version control)
+log "Installing git..."
+if sudo dnf install -y git; then
+    log "Git installed successfully"
+    git --version | tee -a /home/ec2-user/setup.log
+else
+    log "ERROR: Git installation failed"
+    exit 1
+fi
+
 # Install other useful tools
 log "Installing additional tools..."
-sudo dnf install -y htop vim git unzip curl wget jq || log "Some additional tools failed to install, continuing..."
+sudo dnf install -y htop vim unzip curl wget jq || log "Some additional tools failed to install, continuing..."
 
 # Install nginx with cache refresh
 log "Installing nginx..."
@@ -263,6 +273,14 @@ if systemctl is-active --quiet docker; then
     log "✅ Docker service is active"
 else
     log "❌ Docker service is not active"
+fi
+
+# Verify git installation
+if command -v git >/dev/null 2>&1; then
+    GIT_VERSION=$(git --version)
+    log "✅ Git is installed: $GIT_VERSION"
+else
+    log "❌ Git is not installed"
 fi
 
 # Verify Docker registry is running
