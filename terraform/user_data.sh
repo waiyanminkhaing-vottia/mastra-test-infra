@@ -88,11 +88,6 @@ if curl -fsSL https://ollama.com/install.sh | sh; then
     # Test Ollama installation
     if sudo -u ec2-user bash -c 'export PATH=$PATH:/usr/local/bin && ollama list' >/dev/null 2>&1; then
         log "✅ Ollama is running and accessible"
-
-        # Download a small model for testing
-        log "Downloading Gemma 2B model (this may take a few minutes)..."
-        sudo -u ec2-user bash -c 'export PATH=$PATH:/usr/local/bin && ollama pull gemma:2b' || log "⚠️ Failed to download model, but Ollama is installed"
-
     else
         log "⚠️ Ollama installed but not responding"
     fi
