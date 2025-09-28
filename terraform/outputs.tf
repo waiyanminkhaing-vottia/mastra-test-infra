@@ -34,19 +34,12 @@ output "ssh_public_key" {
   value       = tls_private_key.ssh_key.public_key_openssh
 }
 
-output "health_check_url" {
-  description = "Health check URL for the application"
-  value       = "http://${var.domain_name}/health"
-}
-
-output "app_urls" {
-  description = "Application URLs"
+output "base_urls" {
+  description = "Base URLs for dynamic route management"
   value = {
-    main_app_ip     = "http://${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
-    sanden_app_ip   = "http://${aws_lightsail_static_ip.mastra_static_ip.ip_address}/sanden"
-    main_app_domain = "http://${var.domain_name}"
-    sanden_app_domain = "http://${var.domain_name}/sanden"
-    health_check    = "http://${var.domain_name}/health"
+    domain_base = "http://${var.domain_name}"
+    ip_base     = "http://${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
+    note        = "Routes are managed dynamically via GitHub Actions workflow"
   }
 }
 
@@ -70,10 +63,12 @@ output "route53_info" {
   }
 }
 
-output "docker_ports" {
-  description = "Docker container port mapping"
+output "infrastructure_info" {
+  description = "Infrastructure management information"
   value = {
-    main_app   = "Port 3000 (default route)"
-    sanden_app = "Port 3001 (/sanden path)"
+    route_management   = "Use GitHub Actions 'Manage Nginx Routes' workflow to add/remove routes"
+    docker_registry    = "Private registry available via SSH tunnel on port 5000"
+    available_ports    = "3000-3010 (configure routes to point to your application ports)"
+    registry_access    = "ssh -L 5000:localhost:5000 ec2-user@${aws_lightsail_static_ip.mastra_static_ip.ip_address}"
   }
 }
