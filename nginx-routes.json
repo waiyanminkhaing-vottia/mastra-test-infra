@@ -1,6 +1,14 @@
 {
-  "routes": [],
-  "last_updated": "2025-01-14T00:00:00Z",
+  "routes": [
+    {
+      "name": "dashboard",
+      "path": "/dashboard",
+      "type": "proxy",
+      "target_port": "3000",
+      "created": "2025-09-28T02:06:31.228914Z"
+    }
+  ],
+  "last_updated": "2025-09-28T02:06:31.228946Z",
   "version": "1.0",
   "description": "Dynamic nginx route configuration for Mastra infrastructure"
 }
