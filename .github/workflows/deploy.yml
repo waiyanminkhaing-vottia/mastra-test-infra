@@ -53,6 +53,9 @@ jobs:
           sudo docker stop postgres-pgvector 2>/dev/null || true
           sudo docker rm postgres-pgvector 2>/dev/null || true
 
+          # Remove existing volume to ensure clean initialization
+          sudo docker volume rm postgres_data 2>/dev/null || true
+
           # Deploy pgvector container
           sudo docker run -d \
             --name postgres-pgvector \
