@@ -137,48 +137,91 @@ jobs:
         ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts
 
         echo "Waiting for instance setup to complete..."
+        echo "This process typically takes 3-5 minutes for full service initialization."
 
-        # Verify services are running
+        # Wait for setup completion marker
+        echo "Checking for setup completion marker..."
+        SETUP_COMPLETE=false
+        for i in {1..20}; do
+          echo "Attempt $i/20: Checking setup status..."
+          if ssh -o ConnectTimeout=10 -o BatchMode=yes ec2-user@$INSTANCE_IP "test -f /home/ec2-user/.setup-completed" 2>/dev/null; then
+            echo "✅ Setup completion marker found!"
+            SETUP_COMPLETE=true
+            break
+          else
+            echo "⏳ Setup still in progress, waiting 30 seconds..."
+            sleep 30
+          fi
+        done
+
+        if [ "$SETUP_COMPLETE" = false ]; then
+          echo "⚠️ Setup completion marker not found after 10 minutes"
+          echo "Proceeding with service verification anyway..."
+        fi
+
+        # Additional wait for services to fully initialize
+        echo "Waiting additional 60 seconds for services to fully initialize..."
+        sleep 60
+
+        # Verify services are running with retry logic
         ssh -o ConnectTimeout=10 ec2-user@$INSTANCE_IP << 'EOF'
-          # Check Docker service
+          # Function to check service with retries
+          check_service_with_retry() {
+            local service_name=$1
+            local check_command=$2
+            local max_attempts=5
+            local wait_time=10
+
+            for attempt in $(seq 1 $max_attempts); do
+              echo "Attempt $attempt/$max_attempts: Checking $service_name..."
+              if eval "$check_command"; then
+                echo "✅ $service_name is ready"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "⏳ $service_name not ready, waiting ${wait_time}s..."
+                  sleep $wait_time
+                else
+                  echo "❌ $service_name failed after $max_attempts attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+
+          # Check Docker service with retries
           echo "Checking Docker service..."
-          if sudo systemctl is-active docker >/dev/null; then
-            echo "✅ Docker service is active"
+          if check_service_with_retry "Docker" "sudo systemctl is-active docker >/dev/null"; then
             echo "Docker version: $(sudo docker --version)"
-          else
-            echo "❌ Docker service is not active"
           fi
 
-          # Check Nginx service
+          # Check Nginx service with retries
           echo "Checking Nginx service..."
-          if sudo systemctl is-active nginx >/dev/null; then
-            echo "✅ Nginx service is active"
+          if check_service_with_retry "Nginx" "sudo systemctl is-active nginx >/dev/null"; then
             echo "Nginx version: $(nginx -v 2>&1)"
-          else
-            echo "❌ Nginx service is not active"
           fi
 
-          # Test basic nginx response
-          echo "Testing nginx basic response..."
-          if curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" localhost | grep -q "200\|404"; then
-            echo "✅ Nginx is responding"
-          else
-            echo "⚠️ Nginx not responding yet"
-          fi
+          # Test nginx response with retries
+          echo "Testing nginx response..."
+          check_service_with_retry "Nginx HTTP response" 'curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" localhost | grep -q "200\|404"'
 
-          # Check Docker registry (only accessible via SSH tunnel)
+          # Check Docker registry with retries
           echo "Checking Docker registry..."
-          if docker ps | grep -q local-registry; then
-            echo "✅ Docker registry container is running"
-            if curl -s --connect-timeout 5 localhost:5000/v2/ | grep -q "{}"; then
-              echo "✅ Docker registry is responding to API calls (localhost only)"
-              echo "ℹ️  Registry is only accessible via SSH tunnel: ssh -L 5000:localhost:5000 ec2-user@<instance-ip>"
-            else
-              echo "⚠️ Docker registry not responding to API calls"
+          if check_service_with_retry "Docker registry container" "docker ps | grep -q local-registry"; then
+            echo "Testing Docker registry API..."
+            if check_service_with_retry "Docker registry API" 'curl -s --connect-timeout 5 localhost:5000/v2/ | grep -q "{}"'; then
+              echo "✅ Docker registry is fully operational (localhost only)"
+              echo "ℹ️  Registry access: ssh -L 5000:localhost:5000 ec2-user@$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
             fi
-          else
-            echo "❌ Docker registry container is not running"
           fi
+
+          # Final status summary
+          echo ""
+          echo "=== Service Status Summary ==="
+          echo "Docker: $(sudo systemctl is-active docker)"
+          echo "Nginx: $(sudo systemctl is-active nginx)"
+          echo "Docker Registry: $(docker ps --filter name=local-registry --format 'table {{.Status}}' | tail -1)"
+          echo "Setup completed at: $(cat /home/ec2-user/.setup-completed 2>/dev/null || echo 'Not found')"
         EOF
 
     - name: Output Instance Info
