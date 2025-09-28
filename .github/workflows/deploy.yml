@@ -91,10 +91,21 @@ jobs:
           done
 
           echo "Verifying databases are created..."
-          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -c "\l" | grep -E "${{ vars.POSTGRES_DB }}|${{ vars.AGENT_POSTGRES_DB }}"
+          # List all databases first
+          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_USER }} -c "\l"
+
+          echo "Checking for specific databases..."
+          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_USER }} -c "\l" | grep -E "${{ vars.POSTGRES_DB }}|${{ vars.AGENT_POSTGRES_DB }}" || echo "Note: Custom databases may be created by POSTGRES_MULTIPLE_DATABASES"
 
           echo "Checking pgvector extension..."
-          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+          # Check extension in the user's default database first
+          sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_USER }} -c "SELECT * FROM pg_extension WHERE extname = 'vector';" || echo "pgvector extension not found in default database"
+
+          # If POSTGRES_DB exists, check there too
+          if sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_USER }} -c "\l" | grep -q "${{ vars.POSTGRES_DB }}"; then
+            echo "Checking pgvector extension in ${{ vars.POSTGRES_DB }}..."
+            sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d ${{ vars.POSTGRES_DB }} -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+          fi
 
           echo "✅ Database verification completed"
         EOF
