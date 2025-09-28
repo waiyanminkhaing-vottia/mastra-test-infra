@@ -215,12 +215,46 @@ jobs:
             fi
           fi
 
+          # Check Ollama with retries
+          echo "Checking Ollama..."
+          if check_service_with_retry "Ollama installation" "command -v ollama >/dev/null"; then
+            echo "Ollama version: $(ollama --version 2>/dev/null || echo 'version unknown')"
+
+            # Check if Ollama service is running
+            if check_service_with_retry "Ollama service" "pgrep -f 'ollama serve' >/dev/null"; then
+              echo "✅ Ollama service is running"
+
+              # Test Ollama API
+              if check_service_with_retry "Ollama API" 'curl -s --connect-timeout 5 localhost:11434/api/tags >/dev/null'; then
+                echo "✅ Ollama API is responding"
+                echo "ℹ️  Ollama access: ssh -L 11434:localhost:11434 ec2-user@$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
+
+                # List any installed models
+                MODELS=$(ollama list 2>/dev/null | grep -v "NAME" | grep -v "^$" || echo "")
+                if [ -n "$MODELS" ]; then
+                  echo "✅ Installed models:"
+                  echo "$MODELS"
+                else
+                  echo "ℹ️  No models installed yet - use GitHub Actions 'Manage Ollama Models' workflow"
+                fi
+              else
+                echo "⚠️ Ollama service running but API not responding"
+              fi
+            else
+              echo "⚠️ Ollama installed but service not running"
+              echo "ℹ️  Service will auto-start on next reboot or can be started manually"
+            fi
+          else
+            echo "❌ Ollama not installed"
+          fi
+
           # Final status summary
           echo ""
           echo "=== Service Status Summary ==="
           echo "Docker: $(sudo systemctl is-active docker)"
           echo "Nginx: $(sudo systemctl is-active nginx)"
           echo "Docker Registry: $(docker ps --filter name=local-registry --format 'table {{.Status}}' | tail -1)"
+          echo "Ollama: $(if pgrep -f 'ollama serve' >/dev/null; then echo 'running'; else echo 'stopped'; fi)"
           echo "Setup completed at: $(cat /home/ec2-user/.setup-completed 2>/dev/null || echo 'Not found')"
         EOF
 
