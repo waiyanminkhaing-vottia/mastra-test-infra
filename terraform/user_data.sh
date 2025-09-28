@@ -122,16 +122,46 @@ else
     log "Nginx not installed - skipping nginx configuration"
 fi
 
-# Configure firewall (firewalld on Amazon Linux)
+# Configure firewall (Amazon Linux 2023 uses iptables, not firewalld by default)
 log "Configuring firewall..."
-sudo systemctl start firewalld
-sudo systemctl enable firewalld
-sudo firewall-cmd --permanent --add-service=ssh
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
-sudo firewall-cmd --permanent --add-port=5432/tcp
-sudo firewall-cmd --reload
-log "Firewall configured and enabled (Docker registry only accessible via SSH tunnel)"
+
+# Check if firewalld is available, if not, use iptables or skip
+if command -v firewall-cmd >/dev/null 2>&1; then
+    log "Using firewalld for firewall configuration..."
+    if ! sudo systemctl is-active firewalld >/dev/null 2>&1; then
+        sudo systemctl start firewalld
+        sudo systemctl enable firewalld
+    fi
+    sudo firewall-cmd --permanent --add-service=ssh
+    sudo firewall-cmd --permanent --add-service=http
+    sudo firewall-cmd --permanent --add-service=https
+    sudo firewall-cmd --permanent --add-port=5432/tcp
+    sudo firewall-cmd --reload
+    log "Firewall configured with firewalld"
+else
+    log "Firewalld not available, checking for iptables..."
+    if command -v iptables >/dev/null 2>&1; then
+        log "Using iptables for basic firewall rules..."
+        # Allow SSH (port 22)
+        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+        # Allow HTTP (port 80)
+        sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+        # Allow HTTPS (port 443)
+        sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+        # Allow PostgreSQL (port 5432)
+        sudo iptables -A INPUT -p tcp --dport 5432 -j ACCEPT
+        # Allow established connections
+        sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        # Allow loopback
+        sudo iptables -A INPUT -i lo -j ACCEPT
+        # Save iptables rules
+        sudo service iptables save 2>/dev/null || log "iptables save not available, rules are temporary"
+        log "Basic iptables rules configured"
+    else
+        log "Neither firewalld nor iptables available, relying on AWS security groups for firewall"
+    fi
+fi
+log "Firewall configuration completed (Docker registry only accessible via SSH tunnel)"
 
 # Create shared Docker network
 log "Creating Docker network..."
