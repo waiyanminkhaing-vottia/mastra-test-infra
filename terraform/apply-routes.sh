@@ -79,6 +79,9 @@ for route in config.get('routes', []):
     # Route: {route['name']} - root domain ({route_type})
     location / {{
         proxy_pass http://127.0.0.1:{port}/;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 90s;
+        proxy_send_timeout 90s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -92,6 +95,9 @@ for route in config.get('routes', []):
     # Route: {route['name']} - Next.js with basePath
     location {path}/ {{
         proxy_pass http://127.0.0.1:{port}{path}/;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 90s;
+        proxy_send_timeout 90s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -101,6 +107,9 @@ for route in config.get('routes', []):
     # Handle {path} without trailing slash
     location = {path} {{
         proxy_pass http://127.0.0.1:{port}{path};
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 90s;
+        proxy_send_timeout 90s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -114,6 +123,9 @@ for route in config.get('routes', []):
     location {path}/ {{
         rewrite ^{path}(/.*)?$ $1 break;
         proxy_pass http://127.0.0.1:{port}/;
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 90s;
+        proxy_send_timeout 90s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -124,6 +136,9 @@ for route in config.get('routes', []):
     location = {path} {{
         rewrite ^{path}$ / break;
         proxy_pass http://127.0.0.1:{port};
+        proxy_read_timeout 120s;
+        proxy_connect_timeout 90s;
+        proxy_send_timeout 90s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
