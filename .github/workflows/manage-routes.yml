@@ -266,64 +266,47 @@ jobs:
           git commit -m "${ACTION^} nginx route: ${ROUTE_NAME}"
           git push
 
-      - name: Configure AWS credentials
+      - name: Setup SSH connection
         if: github.event.inputs.action != 'list'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
-
-      - name: Setup Terraform
-        if: github.event.inputs.action != 'list'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.7.0'
-
-      - name: Get instance connection info
-        if: github.event.inputs.action != 'list'
-        id: get-instance
+        id: setup-ssh
         run: |
-          cd terraform
-          terraform init -input=false > /dev/null
+          # Use the known domain name
+          LIGHTSAIL_HOST="test.dev-maestra.vottia.me"
+          LIGHTSAIL_USER="ec2-user"
 
-          # Check if state file exists and has resources
-          if [ ! -f terraform.tfstate ] || [ "$(terraform state list 2>/dev/null | wc -l)" -eq 0 ]; then
-            echo "⚠️  Warning: Infrastructure not deployed yet"
-            echo "deployed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+          echo "Connecting to: $LIGHTSAIL_HOST"
 
-          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>/dev/null || echo "")
-          SSH_KEY=$(terraform output -raw ssh_private_key 2>/dev/null || echo "")
+          # Setup SSH key from secrets
+          mkdir -p ~/.ssh
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-          if [ -z "$INSTANCE_IP" ] || [ -z "$SSH_KEY" ]; then
-            echo "⚠️  Warning: Infrastructure not fully deployed"
-            echo "deployed=false" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Infrastructure found"
+          # Test SSH connection
+          ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts 2>/dev/null
+
+          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no $LIGHTSAIL_USER@$LIGHTSAIL_HOST "echo 'SSH connection successful'" 2>/dev/null; then
+            echo "✅ SSH connection successful"
             echo "deployed=true" >> $GITHUB_OUTPUT
-            echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
-
-            # Save SSH key
-            mkdir -p ~/.ssh
-            echo "$SSH_KEY" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-            ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts 2>/dev/null
+            echo "instance_host=$LIGHTSAIL_HOST" >> $GITHUB_OUTPUT
+            echo "instance_user=$LIGHTSAIL_USER" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to connect to server"
+            echo "deployed=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy routes to server
-        if: github.event.inputs.action != 'list' && steps.get-instance.outputs.deployed == 'true'
+        if: github.event.inputs.action != 'list' && steps.setup-ssh.outputs.deployed == 'true'
         run: |
-          INSTANCE_IP="${{ steps.get-instance.outputs.instance_ip }}"
+          INSTANCE_HOST="${{ steps.setup-ssh.outputs.instance_host }}"
+          INSTANCE_USER="${{ steps.setup-ssh.outputs.instance_user }}"
 
           echo "📤 Deploying routes to server..."
 
           # Copy routes file to server
-          scp -o StrictHostKeyChecking=no nginx-routes.json ec2-user@$INSTANCE_IP:/tmp/
+          scp -o StrictHostKeyChecking=no nginx-routes.json $INSTANCE_USER@$INSTANCE_HOST:/tmp/
 
           # Deploy routes and reload nginx
-          ssh -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP << 'REMOTE_EOF'
+          ssh -o StrictHostKeyChecking=no $INSTANCE_USER@$INSTANCE_HOST << 'REMOTE_EOF'
             # Move routes file
             sudo mkdir -p /etc/nginx/routes
             sudo mv /tmp/nginx-routes.json /etc/nginx/routes/
