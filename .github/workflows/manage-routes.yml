@@ -58,8 +58,8 @@ jobs:
           fi
 
           if [ "$ACTION" = "add" ] || [ "$ACTION" = "edit" ]; then
-            if [ -z "$ROUTE_PATH" ] || [ -z "$TARGET_PORT" ]; then
-              echo "❌ Error: route_path and target_port are required for $ACTION action"
+            if [ -z "$TARGET_PORT" ]; then
+              echo "❌ Error: target_port is required for $ACTION action"
               exit 1
             fi
 
@@ -69,9 +69,9 @@ jobs:
               exit 1
             fi
 
-            # Validate path format
-            if [[ ! "$ROUTE_PATH" =~ ^/ ]]; then
-              echo "❌ Error: route_path must start with /"
+            # Validate path format (allow empty string or must start with /)
+            if [ -n "$ROUTE_PATH" ] && [[ ! "$ROUTE_PATH" =~ ^/ ]]; then
+              echo "❌ Error: route_path must start with / or be empty for root"
               exit 1
             fi
           fi
