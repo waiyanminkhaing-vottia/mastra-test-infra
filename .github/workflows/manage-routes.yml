@@ -6,210 +6,464 @@ on:
       action:
         description: 'Action to perform'
         required: true
-        default: 'list'
         type: choice
         options:
-        - list
-        - add
-        - remove
-        - update
-        - reload
+          - add
+          - edit
+          - delete
+          - list
       route_name:
-        description: 'Route name (for add/remove/update operations)'
+        description: 'Route name (required for add/edit/delete)'
         required: false
         type: string
       route_path:
-        description: 'Route path (e.g., /api, /sanden)'
+        description: 'Route path (e.g., /dashboard for Next.js, / for normal apps)'
         required: false
         type: string
       target_port:
-        description: 'Target port (e.g., 3000, 3001)'
+        description: 'Target port (e.g., 3000)'
         required: false
         type: string
       route_type:
         description: 'Route type'
         required: false
-        default: 'proxy'
         type: choice
         options:
-        - proxy
-        - static
-        - redirect
-        - health
-
-env:
-  ROUTES_FILE: 'nginx-routes.json'
+          - nextjs
+          - normal
+        default: 'normal'
 
 jobs:
   manage-routes:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+      - name: Validate inputs
+        run: |
+          ACTION="${{ github.event.inputs.action }}"
+          ROUTE_NAME="${{ github.event.inputs.route_name }}"
+          ROUTE_PATH="${{ github.event.inputs.route_path }}"
+          TARGET_PORT="${{ github.event.inputs.target_port }}"
 
-    - name: Get instance details
-      id: instance
-      run: |
-        echo "Setting up connection details..."
+          if [ "$ACTION" != "list" ]; then
+            if [ -z "$ROUTE_NAME" ]; then
+              echo "❌ Error: route_name is required for $ACTION action"
+              exit 1
+            fi
+          fi
 
-        # Get host from Terraform variables (same as deploy.yml)
-        LIGHTSAIL_HOST=$(grep 'default.*=' terraform/variables.tf | grep 'test.dev-maestra.vottia.me' | sed 's/.*"\(.*\)".*/\1/')
-        LIGHTSAIL_USER="ec2-user"
+          if [ "$ACTION" = "add" ] || [ "$ACTION" = "edit" ]; then
+            if [ -z "$ROUTE_PATH" ] || [ -z "$TARGET_PORT" ]; then
+              echo "❌ Error: route_path and target_port are required for $ACTION action"
+              exit 1
+            fi
 
-        if [ -z "$LIGHTSAIL_HOST" ]; then
-          echo "ERROR: Could not extract host from terraform/variables.tf"
-          exit 1
-        fi
+            # Validate port is a number
+            if ! [[ "$TARGET_PORT" =~ ^[0-9]+$ ]]; then
+              echo "❌ Error: target_port must be a number"
+              exit 1
+            fi
 
-        echo "Host: $LIGHTSAIL_HOST"
-        echo "User: $LIGHTSAIL_USER"
+            # Validate path format
+            if [[ ! "$ROUTE_PATH" =~ ^/ ]]; then
+              echo "❌ Error: route_path must start with /"
+              exit 1
+            fi
+          fi
 
-        echo "instance_ip=$LIGHTSAIL_HOST" >> $GITHUB_OUTPUT
-        echo "instance_user=$LIGHTSAIL_USER" >> $GITHUB_OUTPUT
+          echo "✅ Input validation passed"
 
-    - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ steps.instance.outputs.instance_ip }} >> ~/.ssh/known_hosts
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-        # Test SSH connection
-        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "echo 'SSH connection successful for route management'"
+      - name: List routes
+        if: github.event.inputs.action == 'list'
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
 
-    - name: Initialize routes file if not exists
-      run: |
-        if [ ! -f "${{ env.ROUTES_FILE }}" ]; then
-          echo "Creating initial routes configuration file..."
-          python3 -c "import json; import os; from datetime import datetime; routes_file = os.environ.get('ROUTES_FILE', 'nginx-routes.json'); config = {'routes': [], 'last_updated': datetime.utcnow().isoformat() + 'Z', 'version': '1.0', 'description': 'Dynamic nginx route configuration for Mastra infrastructure'}; f = open(routes_file, 'w'); json.dump(config, f, indent=2); f.close(); print(f'Initial routes configuration created: {routes_file}')"
-        fi
-      env:
-        ROUTES_FILE: ${{ env.ROUTES_FILE }}
+          routes_file = 'nginx-routes.json'
 
-    - name: List current routes
-      if: github.event.inputs.action == 'list'
-      run: |
-        echo "## Current Nginx Routes" >> $GITHUB_STEP_SUMMARY
+          if not os.path.exists(routes_file):
+              print("⚠️  No routes configured yet")
+              exit(0)
 
-        if [ -f "${{ env.ROUTES_FILE }}" ]; then
-          echo "### Local Configuration:" >> $GITHUB_STEP_SUMMARY
-          echo '```json' >> $GITHUB_STEP_SUMMARY
-          cat ${{ env.ROUTES_FILE }} >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-        else
-          echo "No local routes configuration found." >> $GITHUB_STEP_SUMMARY
-        fi
+          with open(routes_file, 'r') as f:
+              config = json.load(f)
 
-        echo "### Live Server Configuration:" >> $GITHUB_STEP_SUMMARY
-        echo '```nginx' >> $GITHUB_STEP_SUMMARY
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "if [ -f /etc/nginx/conf.d/dynamic-routes.conf ]; then cat /etc/nginx/conf.d/dynamic-routes.conf; else echo 'No nginx configuration found on server'; fi" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+          routes = config.get('routes', [])
 
-    - name: Add route
-      if: github.event.inputs.action == 'add'
-      run: |
-        if [ -z "${{ github.event.inputs.route_name }}" ] || [ -z "${{ github.event.inputs.route_path }}" ]; then
-          echo "ERROR: route_name and route_path are required for add operation"
-          exit 1
-        fi
+          if not routes:
+              print("⚠️  No routes configured")
+          else:
+              print("📋 Current Routes:")
+              print()
+              for idx, route in enumerate(routes, 1):
+                  print(f"{idx}. {route['name']}")
+                  print(f"   Type: {route.get('route_type', 'normal')}")
+                  print(f"   Path: {route['path']}")
+                  print(f"   Target: localhost:{route['target_port']}")
+                  print()
+          EOF
 
-        # Add route to JSON configuration
-        echo "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwppbXBvcnQgb3MKZnJvbSBkYXRldGltZSBpbXBvcnQgZGF0ZXRpbWUKCnJvdXRlX25hbWUgPSBvcy5lbnZpcm9uLmdldCgiUk9VVEVfTkFNRSIsICIiKQpyb3V0ZV9wYXRoID0gb3MuZW52aXJvbi5nZXQoIlJPVVRFX1BBVEgiLCAiIikKcm91dGVfdHlwZSA9IG9zLmVudmlyb24uZ2V0KCJST1VURV9UWVBFIiwgInByb3h5IikKdGFyZ2V0X3BvcnQgPSBvcy5lbnZpcm9uLmdldCgiVEFSR0VUX1BPUlQiLCAiMzAwMCIpCgpyb3V0ZXNfZmlsZSA9IG9zLmVudmlyb24uZ2V0KCJST1VURVNfRklMRSIsICJuZ2lueC1yb3V0ZXMuanNvbiIpCnRyeToKICAgIHdpdGggb3Blbihyb3V0ZXNfZmlsZSwgInIiKSBhcyBmOgogICAgICAgIGNvbmZpZyA9IGpzb24ubG9hZChmKQpleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICBjb25maWcgPSB7InJvdXRlcyI6IFtdLCAidmVyc2lvbiI6ICIxLjAifQoKZm9yIHJvdXRlIGluIGNvbmZpZ1sicm91dGVzIl06CiAgICBpZiByb3V0ZVsibmFtZSJdID09IHJvdXRlX25hbWU6CiAgICAgICAgcHJpbnQoZiJFUlJPUjogUm91dGUge3JvdXRlX25hbWV9IGFscmVhZHkgZXhpc3RzIikKICAgICAgICBzeXMuZXhpdCgxKQoKbmV3X3JvdXRlID0gewogICAgIm5hbWUiOiByb3V0ZV9uYW1lLAogICAgInBhdGgiOiByb3V0ZV9wYXRoLAogICAgInR5cGUiOiByb3V0ZV90eXBlLAogICAgInRhcmdldF9wb3J0IjogdGFyZ2V0X3BvcnQsCiAgICAiY3JlYXRlZCI6IGRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpICsgIloiCn0KCmNvbmZpZ1sicm91dGVzIl0uYXBwZW5kKG5ld19yb3V0ZSkKY29uZmlnWyJsYXN0X3VwZGF0ZWQiXSA9IGRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpICsgIloiCgp3aXRoIG9wZW4ocm91dGVzX2ZpbGUsICJ3IikgYXMgZjoKICAgIGpzb24uZHVtcChjb25maWcsIGYsIGluZGVudD0yKQoKcHJpbnQoZiJBZGRlZCByb3V0ZToge25ld19yb3V0ZX0iKQ==" | base64 -d > add_route.py
-        python3 add_route.py
-      env:
-        ROUTE_NAME: ${{ github.event.inputs.route_name }}
-        ROUTE_PATH: ${{ github.event.inputs.route_path }}
-        ROUTE_TYPE: ${{ github.event.inputs.route_type || 'proxy' }}
-        TARGET_PORT: ${{ github.event.inputs.target_port || '3000' }}
-        ROUTES_FILE: ${{ env.ROUTES_FILE }}
+      - name: Add route
+        if: github.event.inputs.action == 'add'
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
 
-    - name: Remove route
-      if: github.event.inputs.action == 'remove'
-      run: |
-        if [ -z "${{ github.event.inputs.route_name }}" ]; then
-          echo "ERROR: route_name is required for remove operation"
-          exit 1
-        fi
+          route_name = "${{ github.event.inputs.route_name }}"
+          route_path = "${{ github.event.inputs.route_path }}"
+          target_port = "${{ github.event.inputs.target_port }}"
+          route_type = "${{ github.event.inputs.route_type }}"
 
-        # Remove route from JSON configuration
-        echo "aW1wb3J0IGpzb24KaW1wb3J0IHN5cwppbXBvcnQgb3MKZnJvbSBkYXRldGltZSBpbXBvcnQgZGF0ZXRpbWUKCnJvdXRlX25hbWUgPSBvcy5lbnZpcm9uLmdldCgiUk9VVEVfTkFNRSIsICIiKQoKcm91dGVzX2ZpbGUgPSBvcy5lbnZpcm9uLmdldCgiUk9VVEVTX0ZJTEUiLCAibmdpbngtcm91dGVzLmpzb24iKQp0cnk6CiAgICB3aXRoIG9wZW4ocm91dGVzX2ZpbGUsICJyIikgYXMgZjoKICAgICAgICBjb25maWcgPSBqc29uLmxvYWQoZikKZXhjZXB0IEZpbGVOb3RGb3VuZEVycm9yOgogICAgcHJpbnQoIkVSUk9SOiBObyByb3V0ZXMgY29uZmlndXJhdGlvbiBmb3VuZCIpCiAgICBzeXMuZXhpdCgxKQoKaW5pdGlhbF9jb3VudCA9IGxlbihjb25maWdbInJvdXRlcyJdKQpjb25maWdbInJvdXRlcyJdID0gW3IgZm9yIHIgaW4gY29uZmlnWyJyb3V0ZXMiXSBpZiByWyJuYW1lIl0gIT0gcm91dGVfbmFtZV0KCmlmIGxlbihjb25maWdbInJvdXRlcyJdKSA9PSBpbml0aWFsX2NvdW50OgogICAgcHJpbnQoZiJFUlJPUjogUm91dGUge3JvdXRlX25hbWV9IG5vdCBmb3VuZCIpCiAgICBzeXMuZXhpdCgxKQoKY29uZmlnWyJsYXN0X3VwZGF0ZWQiXSA9IGRhdGV0aW1lLnV0Y25vdygpLmlzb2Zvcm1hdCgpICsgIloiCgp3aXRoIG9wZW4ocm91dGVzX2ZpbGUsICJ3IikgYXMgZjoKICAgIGpzb24uZHVtcChjb25maWcsIGYsIGluZGVudD0yKQoKcHJpbnQoZiJSZW1vdmVkIHJvdXRlOiB7cm91dGVfbmFtZX0iKQ==" | base64 -d > remove_route.py
-        python3 remove_route.py
-      env:
-        ROUTE_NAME: ${{ github.event.inputs.route_name }}
-        ROUTES_FILE: ${{ env.ROUTES_FILE }}
+          routes_file = 'nginx-routes.json'
 
-    - name: Generate nginx configuration
-      if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update' || github.event.inputs.action == 'reload'
-      run: |
-        # Generate nginx config from routes JSON
-        echo "aW1wb3J0IGpzb24KaW1wb3J0IG9zCgpyb3V0ZXNfZmlsZSA9IG9zLmVudmlyb24uZ2V0KCJST1VURVNfRklMRSIsICJuZ2lueC1yb3V0ZXMuanNvbiIpCnRyeToKICAgIHdpdGggb3Blbihyb3V0ZXNfZmlsZSwgInIiKSBhcyBmOgogICAgICAgIGNvbmZpZyA9IGpzb24ubG9hZChmKQpleGNlcHQgRmlsZU5vdEZvdW5kRXJyb3I6CiAgICBjb25maWcgPSB7InJvdXRlcyI6IFtdfQoKIyBHZW5lcmF0ZSBuZ2lueCBzZXJ2ZXIgYmxvY2sKbmdpbnhfY29uZmlnID0gIiIic2VydmVyIHsKICAgIGxpc3RlbiA4MCBkZWZhdWx0X3NlcnZlcjsKICAgIHNlcnZlcl9uYW1lIF87CiAgICAKICAgICMgU2VjdXJpdHkgaGVhZGVycwogICAgYWRkX2hlYWRlciBYLUZyYW1lLU9wdGlvbnMgIlNBTUVPUklHSU4iIGFsd2F5czsKICAgIGFkZF9oZWFkZXIgWC1Db250ZW50LVR5cGUtT3B0aW9ucyAibm9zbmlmZiIgYWx3YXlzOwogICAgYWRkX2hlYWRlciBYLVhTUy1Qcm90ZWN0aW9uICIxOyBtb2RlPWJsb2NrIiBhbHdheXM7CiAgICAKICAgIGNsaWVudF9tYXhfYm9keV9zaXplIDEwTTsKIiIiCgojIEFkZCByb3V0ZXMgZnJvbSBKU09OCnJvb3Rfcm91dGVfZXhpc3RzID0gRmFsc2UKZm9yIHJvdXRlIGluIGNvbmZpZy5nZXQoJ3JvdXRlcycsIFtdKToKICAgIGlmIHJvdXRlWyd0eXBlJ10gPT0gJ3Byb3h5JzoKICAgICAgICBwYXRoID0gcm91dGVbJ3BhdGgnXQogICAgICAgIHBvcnQgPSByb3V0ZVsndGFyZ2V0X3BvcnQnXQogICAgICAgIG5hbWUgPSByb3V0ZVsnbmFtZSddCiAgICAgICAgCiAgICAgICAgIyBIYW5kbGUgcm9vdCBwYXRoIHNwZWNpYWxseQogICAgICAgIGlmIHBhdGggPT0gJy8nIG9yIHBhdGggPT0gJyc6CiAgICAgICAgICAgIHJvb3Rfcm91dGVfZXhpc3RzID0gVHJ1ZQogICAgICAgICAgICBuZ2lueF9jb25maWcgKz0gZiIiIgogICAgIyBSb3V0ZToge25hbWV9IC0gcm9vdCBkb21haW4KICAgIGxvY2F0aW9uIC8ge3sKICAgICAgICBwcm94eV9wYXNzIGh0dHA6Ly8xMjcuMC4wLjE6e3BvcnR9LzsKICAgICAgICBwcm94eV9zZXRfaGVhZGVyIEhvc3QgJGhvc3Q7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLVJlYWwtSVAgJHJlbW90ZV9hZGRyOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgWC1Gb3J3YXJkZWQtRm9yICRwcm94eV9hZGRfeF9mb3J3YXJkZWRfZm9yOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgWC1Gb3J3YXJkZWQtUHJvdG8gJHNjaGVtZTsKICAgIH19CiIiIgogICAgICAgIGVsc2U6CiAgICAgICAgICAgICMgQWRkIGxvY2F0aW9uIGJsb2NrIHByZXNlcnZpbmcgZnVsbCBwYXRoIGZvciBOZXh0LmpzIGJhc2VQYXRoCiAgICAgICAgICAgIG5naW54X2NvbmZpZyArPSBmIiIiCiAgICAjIFJvdXRlOiB7bmFtZX0gLSBwcmVzZXJ2ZXMge3BhdGh9IHByZWZpeCBmb3IgTmV4dC5qcyBiYXNlUGF0aAogICAgbG9jYXRpb24ge3BhdGh9LyB7ewogICAgICAgIHByb3h5X3Bhc3MgaHR0cDovLzEyNy4wLjAuMTp7cG9ydH17cGF0aH0vOwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgSG9zdCAkaG9zdDsKICAgICAgICBwcm94eV9zZXRfaGVhZGVyIFgtUmVhbC1JUCAkcmVtb3RlX2FkZHI7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLUZvcndhcmRlZC1Gb3IgJHByb3h5X2FkZF94X2ZvcndhcmRlZF9mb3I7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLUZvcndhcmRlZC1Qcm90byAkc2NoZW1lOwogICAgfX0KCiAgICAjIEhhbmRsZSB7cGF0aH0gd2l0aG91dCB0cmFpbGluZyBzbGFzaAogICAgbG9jYXRpb24gPSB7cGF0aH0ge3sKICAgICAgICBwcm94eV9wYXNzIGh0dHA6Ly8xMjcuMC4wLjE6e3BvcnR9e3BhdGh9OwogICAgICAgIHByb3h5X3NldF9oZWFkZXIgSG9zdCAkaG9zdDsKICAgICAgICBwcm94eV9zZXRfaGVhZGVyIFgtUmVhbC1JUCAkcmVtb3RlX2FkZHI7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLUZvcndhcmRlZC1Gb3IgJHByb3h5X2FkZF94X2ZvcndhcmRlZF9mb3I7CiAgICAgICAgcHJveHlfc2V0X2hlYWRlciBYLUZvcndhcmRlZC1Qcm90byAkc2NoZW1lOwogICAgfX0KIiIiCiAgICBlbGlmIHJvdXRlWyd0eXBlJ10gPT0gJ2hlYWx0aCc6CiAgICAgICAgbmdpbnhfY29uZmlnICs9IGYiIiIKICAgICMgSGVhbHRoIGNoZWNrIC0ge3JvdXRlWyduYW1lJ119CiAgICBsb2NhdGlvbiB7cm91dGVbJ3BhdGgnXX0ge3sKICAgICAgICBhY2Nlc3NfbG9nIG9mZjsKICAgICAgICByZXR1cm4gMjAwICJoZWFsdGh5XFxuIjsKICAgICAgICBhZGRfaGVhZGVyIENvbnRlbnQtVHlwZSB0ZXh0L3BsYWluOwogICAgfX0KIiIiCiAgICBlbGlmIHJvdXRlWyd0eXBlJ10gPT0gJ3JlZGlyZWN0JzoKICAgICAgICByZWRpcmVjdF91cmwgPSByb3V0ZS5nZXQoInJlZGlyZWN0X3VybCIsICIvIikKICAgICAgICBuZ2lueF9jb25maWcgKz0gZiIiIgogICAgIyBSZWRpcmVjdCAtIHtyb3V0ZVsnbmFtZSddfQogICAgbG9jYXRpb24ge3JvdXRlWydwYXRoJ119IHt7CiAgICAgICAgcmV0dXJuIDMwMSB7cmVkaXJlY3RfdXJsfTsKICAgIH19CiIiIgoKIyBBZGQgZGVmYXVsdCBsb2NhdGlvbiBvbmx5IGlmIG5vIHJvb3Qgcm91dGUgZXhpc3RzCmlmIG5vdCByb290X3JvdXRlX2V4aXN0czoKICAgIG5naW54X2NvbmZpZyArPSAiIiIKICAgICMgRGVmYXVsdCBsb2NhdGlvbgogICAgbG9jYXRpb24gLyB7CiAgICAgICAgcmV0dXJuIDIwMCAiTWFzdHJhIEluZnJhc3RydWN0dXJlIC0gUm91dGVzIGxvYWRlZCBmcm9tIG5naW54LXJvdXRlcy5qc29uXFxuIjsKICAgICAgICBhZGRfaGVhZGVyIENvbnRlbnQtVHlwZSB0ZXh0L3BsYWluOwogICAgfQoiIiIKCm5naW54X2NvbmZpZyArPSAiIiIKfQoiIiIKCndpdGggb3BlbigibmdpbnguY29uZiIsICJ3IikgYXMgZjoKICAgIGYud3JpdGUobmdpbnhfY29uZmlnKQoKcHJpbnQoIkdlbmVyYXRlZCBuZ2lueCBjb25maWd1cmF0aW9uOiIpCnByaW50KG5naW54X2NvbmZpZykK" | base64 -d > generate_nginx.py
-        python3 generate_nginx.py
-      env:
-        ROUTES_FILE: ${{ env.ROUTES_FILE }}
+          # Load existing routes
+          if os.path.exists(routes_file):
+              with open(routes_file, 'r') as f:
+                  config = json.load(f)
+          else:
+              config = {'routes': []}
 
-    - name: Deploy nginx configuration
-      if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update' || github.event.inputs.action == 'reload'
-      run: |
-        echo "Deploying nginx configuration to server..."
+          # Check if route already exists
+          for route in config['routes']:
+              if route['name'] == route_name:
+                  print(f"❌ Error: Route '{route_name}' already exists")
+                  exit(1)
+              if route['path'] == route_path:
+                  print(f"❌ Error: Path '{route_path}' is already used by route '{route['name']}'")
+                  exit(1)
 
-        # Copy nginx config to server
-        scp -o ConnectTimeout=10 nginx.conf ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
+          # Add new route
+          new_route = {
+              'name': route_name,
+              'type': 'proxy',
+              'route_type': route_type,
+              'path': route_path,
+              'target_port': int(target_port)
+          }
 
-        # Deploy and reload nginx
-        echo "IyEvYmluL2Jhc2gKc2V0IC1lCiMgQmFja3VwIGN1cnJlbnQgY29uZmlnCnN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvZHluYW1pYy1yb3V0ZXMuY29uZiAvZXRjL25naW54L2NvbmYuZC9keW5hbWljLXJvdXRlcy5jb25mLmJhY2t1cC4kKGRhdGUgKyVzKSAyPi9kZXYvbnVsbCB8fCB0cnVlCgojIERlcGxveSBuZXcgY29uZmlnCnN1ZG8gY3AgL3RtcC9uZ2lueC5jb25mIC9ldGMvbmdpbngvY29uZi5kL2R5bmFtaWMtcm91dGVzLmNvbmYKCiMgVGVzdCBuZ2lueCBjb25maWd1cmF0aW9uCmlmIHN1ZG8gbmdpbnggLXQ7IHRoZW4KICBlY2hvICLinIUgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IHBhc3NlZCIKICAjIFJlbG9hZCBuZ2lueAogIHN1ZG8gc3lzdGVtY3RsIHJlbG9hZCBuZ2lueAogIGVjaG8gIuKchSBOZ2lueCByZWxvYWRlZCBzdWNjZXNzZnVsbHkiCmVsc2UKICBlY2hvICLinYwgTmdpbnggY29uZmlndXJhdGlvbiB0ZXN0IGZhaWxlZCIKICAjIFJlc3RvcmUgYmFja3VwIGlmIGl0IGV4aXN0cwogIHN1ZG8gY3AgL2V0Yy9uZ2lueC9jb25mLmQvZHluYW1pYy1yb3V0ZXMuY29uZi5iYWNrdXAuJChscyAtdCAvZXRjL25naW54L2NvbmYuZC9keW5hbWljLXJvdXRlcy5jb25mLmJhY2t1cC4qIDI+L2Rldi9udWxsIHwgaGVhZCAtMSB8IGN1dCAtZC4gLWY0KSAvZXRjL25naW54L2NvbmYuZC9keW5hbWljLXJvdXRlcy5jb25mIDI+L2Rldi9udWxsIHx8IHRydWUKICBleGl0IDEKZmkK" | base64 -d > deploy_nginx.sh
-        chmod +x deploy_nginx.sh
-        scp -o ConnectTimeout=10 deploy_nginx.sh ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "chmod +x /tmp/deploy_nginx.sh && /tmp/deploy_nginx.sh"
+          config['routes'].append(new_route)
 
-    - name: Verify deployment
-      if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update' || github.event.inputs.action == 'reload'
-      run: |
-        echo "Verifying nginx deployment..."
+          # Save updated routes
+          with open(routes_file, 'w') as f:
+              json.dump(config, f, indent=2)
 
-        echo "IyEvYmluL2Jhc2gKc2V0IC1lCiMgQ2hlY2sgbmdpbnggc3RhdHVzCmlmIHN1ZG8gc3lzdGVtY3RsIGlzLWFjdGl2ZSBuZ2lueCA+L2Rldi9udWxsOyB0aGVuCiAgZWNobyAi4pyFIE5naW54IHNlcnZpY2UgaXMgYWN0aXZlIgplbHNlCiAgZWNobyAi4p2MIE5naW54IHNlcnZpY2UgaXMgbm90IGFjdGl2ZSIKICBleGl0IDEKZmkKCiMgVGVzdCBiYXNpYyBjb25uZWN0aXZpdHkKaWYgY3VybCAtcyAtLWNvbm5lY3QtdGltZW91dCA1IC1vIC9kZXYvbnVsbCAtdyAiJXtodHRwX2NvZGV9IiBsb2NhbGhvc3QgfCBncmVwIC1xICIyMDBcfDQwNFx8MzAxXHwzMDIiOyB0aGVuCiAgZWNobyAi4pyFIE5naW54IGlzIHJlc3BvbmRpbmciCmVsc2UKICBlY2hvICLinYwgTmdpbnggbm90IHJlc3BvbmRpbmciCiAgZXhpdCAxCmZpCg==" | base64 -d > verify_nginx.sh
-        chmod +x verify_nginx.sh
-        scp -o ConnectTimeout=10 verify_nginx.sh ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }}:/tmp/
-        ssh -o ConnectTimeout=10 ${{ steps.instance.outputs.instance_user }}@${{ steps.instance.outputs.instance_ip }} "chmod +x /tmp/verify_nginx.sh && /tmp/verify_nginx.sh"
+          print(f"✅ Added route '{route_name}' successfully")
+          print(f"   Type: {route_type}")
+          print(f"   Path: {route_path}")
+          print(f"   Target: localhost:{target_port}")
+          EOF
 
-    - name: Commit route changes
-      if: github.event.inputs.action == 'add' || github.event.inputs.action == 'remove' || github.event.inputs.action == 'update'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+      - name: Edit route
+        if: github.event.inputs.action == 'edit'
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
 
-        if git diff --quiet ${{ env.ROUTES_FILE }}; then
-          echo "No changes to commit"
-        else
-          git add ${{ env.ROUTES_FILE }}
-          git commit -m "🔄 ${{ github.event.inputs.action }} nginx route: ${{ github.event.inputs.route_name || 'bulk operation' }}"
+          route_name = "${{ github.event.inputs.route_name }}"
+          route_path = "${{ github.event.inputs.route_path }}"
+          target_port = "${{ github.event.inputs.target_port }}"
+          route_type = "${{ github.event.inputs.route_type }}"
+
+          routes_file = 'nginx-routes.json'
+
+          if not os.path.exists(routes_file):
+              print("❌ Error: No routes file found")
+              exit(1)
+
+          with open(routes_file, 'r') as f:
+              config = json.load(f)
+
+          # Find and update route
+          found = False
+          for route in config['routes']:
+              if route['name'] == route_name:
+                  found = True
+                  old_path = route['path']
+                  old_port = route['target_port']
+                  old_type = route.get('route_type', 'normal')
+
+                  route['path'] = route_path
+                  route['target_port'] = int(target_port)
+                  route['route_type'] = route_type
+
+                  print(f"✅ Updated route '{route_name}'")
+                  print(f"   Type: {old_type} → {route_type}")
+                  print(f"   Path: {old_path} → {route_path}")
+                  print(f"   Port: {old_port} → {target_port}")
+                  break
+
+          if not found:
+              print(f"❌ Error: Route '{route_name}' not found")
+              exit(1)
+
+          # Save updated routes
+          with open(routes_file, 'w') as f:
+              json.dump(config, f, indent=2)
+          EOF
+
+      - name: Delete route
+        if: github.event.inputs.action == 'delete'
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+
+          route_name = "${{ github.event.inputs.route_name }}"
+
+          routes_file = 'nginx-routes.json'
+
+          if not os.path.exists(routes_file):
+              print("❌ Error: No routes file found")
+              exit(1)
+
+          with open(routes_file, 'r') as f:
+              config = json.load(f)
+
+          # Find and remove route
+          initial_count = len(config['routes'])
+          config['routes'] = [r for r in config['routes'] if r['name'] != route_name]
+
+          if len(config['routes']) == initial_count:
+              print(f"❌ Error: Route '{route_name}' not found")
+              exit(1)
+
+          # Save updated routes
+          with open(routes_file, 'w') as f:
+              json.dump(config, f, indent=2)
+
+          print(f"✅ Deleted route '{route_name}'")
+          EOF
+
+      - name: Commit changes
+        if: github.event.inputs.action != 'list'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add nginx-routes.json
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          ACTION="${{ github.event.inputs.action }}"
+          ROUTE_NAME="${{ github.event.inputs.route_name }}"
+
+          git commit -m "${ACTION^} nginx route: ${ROUTE_NAME}"
           git push
-          echo "✅ Route configuration changes committed"
-        fi
 
-    - name: Summary
-      run: |
-        echo "## Route Management Summary" >> $GITHUB_STEP_SUMMARY
-        echo "- **Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Route Name**: ${{ github.event.inputs.route_name || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Route Path**: ${{ github.event.inputs.route_path || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Target Port**: ${{ github.event.inputs.target_port || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Route Type**: ${{ github.event.inputs.route_type || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Status**: ✅ Completed successfully" >> $GITHUB_STEP_SUMMARY
+      - name: Configure AWS credentials
+        if: github.event.inputs.action != 'list'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
 
-        if [ -f "${{ env.ROUTES_FILE }}" ]; then
+      - name: Setup Terraform
+        if: github.event.inputs.action != 'list'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.7.0'
+
+      - name: Get instance connection info
+        if: github.event.inputs.action != 'list'
+        id: get-instance
+        run: |
+          cd terraform
+          terraform init
+
+          INSTANCE_IP=$(terraform output -raw instance_public_ip 2>/dev/null || echo "")
+          SSH_KEY=$(terraform output -raw ssh_private_key 2>/dev/null || echo "")
+
+          if [ -z "$INSTANCE_IP" ] || [ -z "$SSH_KEY" ]; then
+            echo "⚠️  Warning: Infrastructure not deployed yet"
+            echo "deployed=false" >> $GITHUB_OUTPUT
+          else
+            echo "deployed=true" >> $GITHUB_OUTPUT
+            echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+
+            # Save SSH key
+            mkdir -p ~/.ssh
+            echo "$SSH_KEY" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H $INSTANCE_IP >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+
+      - name: Deploy routes to server
+        if: github.event.inputs.action != 'list' && steps.get-instance.outputs.deployed == 'true'
+        run: |
+          INSTANCE_IP="${{ steps.get-instance.outputs.instance_ip }}"
+
+          echo "📤 Deploying routes to server..."
+
+          # Copy routes file to server
+          scp -o StrictHostKeyChecking=no nginx-routes.json ec2-user@$INSTANCE_IP:/tmp/
+
+          # Deploy routes and reload nginx
+          ssh -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP << 'REMOTE_EOF'
+            # Move routes file
+            sudo mkdir -p /etc/nginx/routes
+            sudo mv /tmp/nginx-routes.json /etc/nginx/routes/
+
+            # Generate nginx configuration
+            python3 << 'PYTHON_EOF'
+          import json
+
+          # Read routes from JSON file
+          try:
+              with open('/etc/nginx/routes/nginx-routes.json', 'r') as f:
+                  config = json.load(f)
+          except:
+              config = {'routes': []}
+
+          # Generate nginx server block
+          nginx_config = '''server {
+              listen 80 default_server;
+              server_name _;
+
+              # Security headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+
+              client_max_body_size 10M;
+
+          '''
+
+          # Add routes from JSON
+          root_route_exists = False
+          for route in config.get('routes', []):
+              if route['type'] == 'proxy':
+                  path = route['path']
+                  port = route['target_port']
+                  route_type = route.get('route_type', 'normal')
+
+                  # Handle root path specially
+                  if path == '/' or path == '':
+                      root_route_exists = True
+                      nginx_config += f'''
+              # Route: {route['name']} - root domain ({route_type})
+              location / {{
+                  proxy_pass http://127.0.0.1:{port}/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }}
+          '''
+                  else:
+                      if route_type == 'nextjs':
+                          # Next.js apps with basePath - preserve full path
+                          nginx_config += f'''
+              # Route: {route['name']} - Next.js with basePath
+              location {path}/ {{
+                  proxy_pass http://127.0.0.1:{port}{path}/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }}
+
+              # Handle {path} without trailing slash
+              location = {path} {{
+                  proxy_pass http://127.0.0.1:{port}{path};
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }}
+          '''
+                      else:
+                          # Normal apps - strip prefix
+                          nginx_config += f'''
+              # Route: {route['name']} - normal app (prefix stripped)
+              location {path}/ {{
+                  rewrite ^{path}(/.*)?$ $1 break;
+                  proxy_pass http://127.0.0.1:{port}/;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }}
+
+              # Handle {path} without trailing slash
+              location = {path} {{
+                  rewrite ^{path}$ / break;
+                  proxy_pass http://127.0.0.1:{port};
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+              }}
+          '''
+
+          # Add default location only if no root route exists
+          if not root_route_exists:
+              nginx_config += '''
+              # Default location
+              location / {
+                  return 200 "Mastra Infrastructure - Routes managed via GitHub Actions\\n";
+                  add_header Content-Type text/plain;
+              }
+          '''
+
+          nginx_config += '''
+          }
+          '''
+
+          # Write nginx configuration
+          with open('/tmp/dynamic-routes.conf', 'w') as f:
+              f.write(nginx_config)
+          PYTHON_EOF
+
+            # Move generated config to nginx directory
+            sudo mv /tmp/dynamic-routes.conf /etc/nginx/conf.d/dynamic-routes.conf
+
+            # Test nginx configuration
+            if sudo nginx -t; then
+              echo "✅ Nginx configuration is valid"
+              sudo systemctl reload nginx
+              echo "✅ Nginx reloaded successfully"
+            else
+              echo "❌ Nginx configuration test failed"
+              exit 1
+            fi
+          REMOTE_EOF
+
+          echo "✅ Routes deployed and nginx reloaded"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Route Management Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Updated Routes Configuration:" >> $GITHUB_STEP_SUMMARY
-          echo '```json' >> $GITHUB_STEP_SUMMARY
-          cat ${{ env.ROUTES_FILE }} >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-        fi
+          echo "**Action:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.action }}" != "list" ]; then
+            echo "**Route Name:** ${{ github.event.inputs.route_name }}" >> $GITHUB_STEP_SUMMARY
+
+            if [ "${{ github.event.inputs.action }}" != "delete" ]; then
+              echo "**Route Type:** ${{ github.event.inputs.route_type }}" >> $GITHUB_STEP_SUMMARY
+              echo "**Path:** ${{ github.event.inputs.route_path }}" >> $GITHUB_STEP_SUMMARY
+              echo "**Target Port:** ${{ github.event.inputs.target_port }}" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pattern Explanations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next.js Apps:** \`localhost:\${port}/path\` - Full path preserved for basePath support" >> $GITHUB_STEP_SUMMARY
+          echo "**Normal Apps:** \`localhost:\${port}\` - Path prefix stripped, clean routing" >> $GITHUB_STEP_SUMMARY

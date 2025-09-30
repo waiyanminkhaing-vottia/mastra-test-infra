@@ -2,9 +2,19 @@ name: Deploy to Lightsail
 
 on:
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - destroy
 
 jobs:
   deploy:
+    if: github.event.inputs.action == 'deploy'
     runs-on: ubuntu-latest
 
     steps:
@@ -126,5 +136,77 @@ jobs:
           sudo docker exec postgres-pgvector psql -U ${{ vars.POSTGRES_USER }} -d postgres -c "\l" | grep -E "${{ vars.POSTGRES_DB }}|${{ vars.AGENT_POSTGRES_DB }}"
 
           echo "✅ Database verification completed"
+        EOF
+
+  destroy:
+    if: github.event.inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup SSH for deployment
+      run: |
+        echo "Setting up SSH connection..."
+
+        # Set connection details from Terraform variables
+        LIGHTSAIL_HOST=$(grep 'default.*=' terraform/variables.tf | grep 'test.dev-maestra.vottia.me' | sed 's/.*"\(.*\)".*/\1/')
+        LIGHTSAIL_USER="ec2-user"
+
+        echo "Host: $LIGHTSAIL_HOST"
+        echo "User: $LIGHTSAIL_USER"
+
+        # Export for later steps
+        echo "LIGHTSAIL_HOST=$LIGHTSAIL_HOST" >> $GITHUB_ENV
+        echo "LIGHTSAIL_USER=$LIGHTSAIL_USER" >> $GITHUB_ENV
+
+        # Setup SSH key
+        mkdir -p ~/.ssh
+        echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+
+        # Add host to known_hosts and test connection
+        ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts
+        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no $LIGHTSAIL_USER@$LIGHTSAIL_HOST "echo 'SSH connection successful'"
+
+    - name: Destroy pgvector container
+      run: |
+        ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
+          echo "🗑️  Destroying postgres-pgvector container..."
+
+          # Stop and remove container
+          sudo docker stop postgres-pgvector 2>/dev/null || echo "Container not running"
+          sudo docker rm postgres-pgvector 2>/dev/null || echo "Container not found"
+
+          # Remove volume
+          sudo docker volume rm postgres_data 2>/dev/null || echo "Volume not found"
+
+          # Remove network
+          sudo docker network rm mastra-test-network 2>/dev/null || echo "Network not found or still in use"
+
+          # Clean up images
+          sudo docker image prune -f
+
+          echo "✅ Cleanup completed"
+        EOF
+
+    - name: Verify destruction
+      run: |
+        ssh ${{ env.LIGHTSAIL_USER }}@${{ env.LIGHTSAIL_HOST }} << 'EOF'
+          echo "Verifying container removal..."
+          if sudo docker ps -a | grep postgres-pgvector; then
+            echo "❌ Container still exists"
+            exit 1
+          else
+            echo "✅ Container successfully removed"
+          fi
+
+          echo "Verifying volume removal..."
+          if sudo docker volume ls | grep postgres_data; then
+            echo "⚠️  Volume still exists"
+          else
+            echo "✅ Volume successfully removed"
+          fi
         EOF
 
