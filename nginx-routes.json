@@ -6,13 +6,6 @@
       "route_type": "nextjs",
       "path": "/dashboard",
       "target_port": 3000
-    },
-    {
-      "name": "mastra-playground-default",
-      "type": "proxy",
-      "route_type": "normal",
-      "path": "/playground",
-      "target_port": 4000
     }
   ]
 }
