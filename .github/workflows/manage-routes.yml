@@ -285,15 +285,23 @@ jobs:
         id: get-instance
         run: |
           cd terraform
-          terraform init
+          terraform init -input=false > /dev/null
+
+          # Check if state file exists and has resources
+          if [ ! -f terraform.tfstate ] || [ "$(terraform state list 2>/dev/null | wc -l)" -eq 0 ]; then
+            echo "⚠️  Warning: Infrastructure not deployed yet"
+            echo "deployed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           INSTANCE_IP=$(terraform output -raw instance_public_ip 2>/dev/null || echo "")
           SSH_KEY=$(terraform output -raw ssh_private_key 2>/dev/null || echo "")
 
           if [ -z "$INSTANCE_IP" ] || [ -z "$SSH_KEY" ]; then
-            echo "⚠️  Warning: Infrastructure not deployed yet"
+            echo "⚠️  Warning: Infrastructure not fully deployed"
             echo "deployed=false" >> $GITHUB_OUTPUT
           else
+            echo "✅ Infrastructure found"
             echo "deployed=true" >> $GITHUB_OUTPUT
             echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
