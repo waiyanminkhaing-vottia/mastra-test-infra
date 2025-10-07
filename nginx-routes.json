@@ -1,3 +1,11 @@
 {
-  "routes": []
+  "routes": [
+    {
+      "name": "default/dashboard",
+      "type": "proxy",
+      "route_type": "nextjs",
+      "path": "/dashboard",
+      "target_port": 3000
+    }
+  ]
 }
