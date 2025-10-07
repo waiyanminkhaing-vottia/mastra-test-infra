@@ -1,0 +1,171 @@
+name: Setup HTTPS/SSL
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Domain name for SSL certificate'
+        required: true
+        type: string
+        default: 'test.dev-maestra.vottia.me'
+      email:
+        description: 'Email for SSL certificate notifications'
+        required: true
+        type: string
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - install
+          - renew
+          - status
+
+jobs:
+  setup-ssl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Setup SSH connection
+        id: setup-ssh
+        run: |
+          LIGHTSAIL_HOST="${{ github.event.inputs.domain }}"
+          LIGHTSAIL_USER="ec2-user"
+
+          echo "Connecting to: $LIGHTSAIL_HOST"
+
+          # Setup SSH key from secrets
+          mkdir -p ~/.ssh
+          echo "${{ secrets.LIGHTSAIL_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # Test SSH connection
+          ssh-keyscan -H $LIGHTSAIL_HOST >> ~/.ssh/known_hosts 2>/dev/null
+
+          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no $LIGHTSAIL_USER@$LIGHTSAIL_HOST "echo 'SSH connection successful'" 2>/dev/null; then
+            echo "✅ SSH connection successful"
+            echo "connected=true" >> $GITHUB_OUTPUT
+            echo "instance_host=$LIGHTSAIL_HOST" >> $GITHUB_OUTPUT
+            echo "instance_user=$LIGHTSAIL_USER" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Failed to connect to server"
+            echo "connected=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Install SSL Certificate
+        if: github.event.inputs.action == 'install' && steps.setup-ssh.outputs.connected == 'true'
+        run: |
+          INSTANCE_HOST="${{ steps.setup-ssh.outputs.instance_host }}"
+          INSTANCE_USER="${{ steps.setup-ssh.outputs.instance_user }}"
+          DOMAIN="${{ github.event.inputs.domain }}"
+          EMAIL="${{ github.event.inputs.email }}"
+
+          echo "📦 Installing Certbot and obtaining SSL certificate..."
+
+          ssh -o StrictHostKeyChecking=no $INSTANCE_USER@$INSTANCE_HOST << REMOTE_EOF
+            # Install Certbot if not already installed
+            if ! command -v certbot &> /dev/null; then
+              echo "Installing Certbot..."
+              sudo yum update -y
+              sudo yum install -y certbot python3-certbot-nginx
+            else
+              echo "Certbot is already installed"
+            fi
+
+            # Check if certificate already exists
+            if sudo test -d /etc/letsencrypt/live/$DOMAIN; then
+              echo "⚠️  Certificate for $DOMAIN already exists"
+              echo "Use 'renew' action to renew the certificate"
+              exit 0
+            fi
+
+            # Stop nginx temporarily to free up port 80
+            sudo systemctl stop nginx
+
+            # Obtain certificate using standalone mode
+            echo "Obtaining SSL certificate for $DOMAIN..."
+            sudo certbot certonly --standalone \
+              --non-interactive \
+              --agree-tos \
+              --email $EMAIL \
+              -d $DOMAIN
+
+            if [ \$? -eq 0 ]; then
+              echo "✅ SSL certificate obtained successfully"
+
+              # Setup auto-renewal cron job
+              echo "Setting up auto-renewal..."
+              (sudo crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet --deploy-hook 'systemctl reload nginx'") | sudo crontab -
+
+              # Start nginx
+              sudo systemctl start nginx
+
+              echo "✅ SSL certificate installed and auto-renewal configured"
+            else
+              echo "❌ Failed to obtain SSL certificate"
+              sudo systemctl start nginx
+              exit 1
+            fi
+          REMOTE_EOF
+
+      - name: Renew SSL Certificate
+        if: github.event.inputs.action == 'renew' && steps.setup-ssh.outputs.connected == 'true'
+        run: |
+          INSTANCE_HOST="${{ steps.setup-ssh.outputs.instance_host }}"
+          INSTANCE_USER="${{ steps.setup-ssh.outputs.instance_user }}"
+
+          echo "🔄 Renewing SSL certificate..."
+
+          ssh -o StrictHostKeyChecking=no $INSTANCE_USER@$INSTANCE_HOST << 'REMOTE_EOF'
+            # Renew certificate
+            sudo certbot renew
+
+            if [ $? -eq 0 ]; then
+              echo "✅ SSL certificate renewed successfully"
+              sudo systemctl reload nginx
+            else
+              echo "❌ Failed to renew SSL certificate"
+              exit 1
+            fi
+          REMOTE_EOF
+
+      - name: Check SSL Status
+        if: github.event.inputs.action == 'status' && steps.setup-ssh.outputs.connected == 'true'
+        run: |
+          INSTANCE_HOST="${{ steps.setup-ssh.outputs.instance_host }}"
+          INSTANCE_USER="${{ steps.setup-ssh.outputs.instance_user }}"
+          DOMAIN="${{ github.event.inputs.domain }}"
+
+          echo "📋 Checking SSL certificate status..."
+
+          ssh -o StrictHostKeyChecking=no $INSTANCE_USER@$INSTANCE_HOST << REMOTE_EOF
+            if sudo test -d /etc/letsencrypt/live/$DOMAIN; then
+              echo "✅ SSL certificate exists for $DOMAIN"
+              echo ""
+              echo "Certificate details:"
+              sudo certbot certificates -d $DOMAIN
+            else
+              echo "❌ No SSL certificate found for $DOMAIN"
+              echo "Run the 'install' action to obtain a certificate"
+            fi
+          REMOTE_EOF
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## SSL Setup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Domain:** ${{ github.event.inputs.domain }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.action }}" == "install" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+            echo "1. SSL certificate has been installed" >> $GITHUB_STEP_SUMMARY
+            echo "2. Auto-renewal is configured (runs daily at 12:00)" >> $GITHUB_STEP_SUMMARY
+            echo "3. Deploy your routes using the 'Manage Nginx Routes' workflow" >> $GITHUB_STEP_SUMMARY
+            echo "4. Your site will automatically redirect HTTP to HTTPS" >> $GITHUB_STEP_SUMMARY
+          fi

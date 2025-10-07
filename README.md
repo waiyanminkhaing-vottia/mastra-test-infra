@@ -6,7 +6,8 @@ A comprehensive infrastructure setup for deploying applications on AWS Lightsail
 
 - **AWS Lightsail Instance** - Amazon Linux 2023
 - **Docker & Docker Compose** - Container orchestration
-- **Nginx** - Reverse proxy with dynamic route management
+- **Nginx** - Reverse proxy with dynamic route management and HTTPS support
+- **Let's Encrypt SSL** - Automatic HTTPS certificates with auto-renewal
 - **Private Docker Registry** - SSH-tunnel accessible only
 - **PostgreSQL** - Database with pgvector extension
 - **Terraform** - Infrastructure as Code
@@ -28,23 +29,41 @@ This will create:
 - Docker registry (SSH-tunnel only)
 - Nginx with basic configuration
 
-### 2. Manage Routes Dynamically
+### 2. Setup HTTPS (One-time)
+
+```bash
+# Go to GitHub Actions → "Setup HTTPS/SSL"
+# Install SSL certificate:
+Domain: test.dev-maestra.vottia.me
+Email: your-email@example.com
+Action: install
+```
+
+This will:
+- Install Certbot and obtain free SSL certificate from Let's Encrypt
+- Configure automatic renewal (daily check at 12:00)
+- Enable HTTPS on all routes automatically
+
+### 3. Manage Routes Dynamically
 
 ```bash
 # Go to GitHub Actions → "Manage Nginx Routes"
-# Add a health check:
-Action: add
-Route Name: health
-Route Path: /health
-Route Type: health
-
 # Add API service:
 Action: add
 Route Name: api-service
 Route Path: /api
 Target Port: 3001
-Route Type: proxy
+Route Type: normal
+
+# Add Next.js app with basePath:
+Action: add
+Route Name: dashboard
+Route Path: /dashboard
+Target Port: 3000
+Route Type: nextjs
 ```
+
+Routes will automatically use HTTPS if SSL certificates are installed.
 
 ## 📁 Project Structure
 
@@ -52,7 +71,8 @@ Route Type: proxy
 ├── .github/workflows/
 │   ├── infrastructure.yml    # Main infrastructure deployment
 │   ├── deploy.yml           # Application deployment
-│   └── manage-routes.yml    # Dynamic nginx route management
+│   ├── manage-routes.yml    # Dynamic nginx route management
+│   └── setup-https.yml      # SSL certificate installation & management
 ├── terraform/
 │   ├── main.tf              # Lightsail infrastructure
 │   ├── variables.tf         # Configuration variables
@@ -79,8 +99,10 @@ Route Type: proxy
 
 ### Nginx Configuration
 - **Dynamic Routes** - Managed via GitHub Actions
-- **Security Headers** - OWASP recommended headers
-- **Health Checks** - Built-in monitoring endpoints
+- **HTTPS Support** - Automatic SSL/TLS with Let's Encrypt
+- **HTTP to HTTPS Redirect** - Automatic when SSL is configured
+- **Security Headers** - HSTS, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
+- **Modern TLS** - TLS 1.2 and 1.3 with secure ciphers
 - **Backup System** - Automatic configuration backups
 
 ## 🔧 Configuration
@@ -102,39 +124,70 @@ Edit `terraform/variables.tf` to customize:
 - Domain configuration
 - Environment settings
 
+## 🔐 HTTPS/SSL Management
+
+### Setup SSL Certificate (First Time)
+
+Use the **Setup HTTPS/SSL** workflow:
+
+| Action | Description | Required Fields |
+|--------|-------------|----------------|
+| `install` | Install SSL certificate | domain, email |
+| `renew` | Manually renew certificate | domain |
+| `status` | Check certificate status | domain |
+
+**Example:**
+```bash
+Domain: test.dev-maestra.vottia.me
+Email: admin@example.com
+Action: install
+```
+
+### Automatic Features
+- ✅ **Auto-renewal**: Certificates renew 30 days before expiry
+- ✅ **HTTPS redirect**: All HTTP traffic redirects to HTTPS
+- ✅ **Security headers**: HSTS enforces HTTPS for 1 year
+- ✅ **Fallback**: Works in HTTP-only mode if SSL not configured
+
 ## 🌐 Dynamic Route Management
 
 ### Available Route Types
 
-#### Proxy Routes
-Route requests to local applications:
+#### Normal Apps (Prefix Stripped)
+Route requests to apps that don't expect a prefix:
 ```json
 {
   "name": "api-service",
   "path": "/api",
   "type": "proxy",
-  "target_port": "3001"
+  "route_type": "normal",
+  "target_port": 3001
 }
 ```
+Nginx strips `/api` before forwarding to the app.
 
-#### Health Checks
-Simple health monitoring endpoints:
+#### Next.js Apps (Prefix Preserved)
+For Next.js apps with `basePath`:
 ```json
 {
-  "name": "health",
-  "path": "/health",
-  "type": "health"
+  "name": "dashboard",
+  "path": "/dashboard",
+  "type": "proxy",
+  "route_type": "nextjs",
+  "target_port": 3000
 }
 ```
+Nginx preserves `/dashboard` path for Next.js basePath support.
 
-#### Redirects
-HTTP redirections:
+#### Root Domain
+Leave path empty for root domain:
 ```json
 {
-  "name": "redirect-home",
-  "path": "/old-path",
-  "type": "redirect",
-  "redirect_url": "/"
+  "name": "default",
+  "path": "",
+  "type": "proxy",
+  "route_type": "nextjs",
+  "target_port": 3500
 }
 ```
 
@@ -143,10 +196,9 @@ HTTP redirections:
 | Operation | Description | Required Fields |
 |-----------|-------------|----------------|
 | `list` | Show current routes | None |
-| `add` | Create new route | route_name, route_path, route_type |
-| `remove` | Delete route | route_name |
-| `update` | Modify route | route_name + fields to update |
-| `reload` | Regenerate config | None |
+| `add` | Create new route | route_name, route_path, target_port, route_type |
+| `edit` | Modify route | route_name, route_path, target_port, route_type |
+| `delete` | Delete route | route_name |
 
 ## 🐳 Docker Registry Usage
 
@@ -242,12 +294,16 @@ curl http://<instance-ip>/api/status
 
 ## 🛡️ Security Features
 
+- **HTTPS/TLS Encryption** - Free SSL certificates from Let's Encrypt
+- **HSTS Header** - Enforces HTTPS for 1 year
+- **Modern TLS** - TLS 1.2 and 1.3 with secure cipher suites
 - **SSH Key Authentication** - No password access
 - **Firewall Configuration** - Only required ports open
 - **Private Registry** - SSH tunnel access only
-- **Security Headers** - OWASP recommended nginx headers
+- **Security Headers** - X-Frame-Options, X-Content-Type-Options, X-XSS-Protection
 - **Configuration Backups** - Automatic backup before changes
 - **Git Tracking** - All configuration changes versioned
+- **Auto SSL Renewal** - Certificates auto-renew before expiry
 
 ## 🔄 Backup & Recovery
 

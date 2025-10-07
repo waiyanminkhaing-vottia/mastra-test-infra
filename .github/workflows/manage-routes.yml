@@ -307,6 +307,19 @@ jobs:
 
           # Deploy routes and reload nginx
           ssh -o StrictHostKeyChecking=no $INSTANCE_USER@$INSTANCE_HOST << 'REMOTE_EOF'
+            # Check if SSL certificates exist
+            DOMAIN="test.dev-maestra.vottia.me"
+            SSL_CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+
+            if sudo test -f "$SSL_CERT_PATH"; then
+              echo "✅ SSL certificate found"
+              USE_HTTPS=true
+            else
+              echo "⚠️  SSL certificate not found - will use HTTP only"
+              echo "Run the 'Setup HTTPS/SSL' workflow to install certificates"
+              USE_HTTPS=false
+            fi
+
             # Move routes file
             sudo mkdir -p /etc/nginx/routes
             sudo mv /tmp/nginx-routes.json /etc/nginx/routes/
@@ -314,6 +327,7 @@ jobs:
             # Generate nginx configuration
             python3 << 'PYTHON_EOF'
           import json
+          import os
 
           # Read routes from JSON file
           try:
@@ -322,8 +336,48 @@ jobs:
           except:
               config = {'routes': []}
 
-          # Generate nginx server block
-          nginx_config = '''server {
+          # Check if SSL should be used
+          use_https = os.path.exists('/etc/letsencrypt/live/test.dev-maestra.vottia.me/fullchain.pem')
+
+          if use_https:
+              # Generate HTTP to HTTPS redirect server block
+              nginx_config = '''# HTTP server - redirect to HTTPS
+          server {
+              listen 80 default_server;
+              server_name _;
+              return 301 https://$host$request_uri;
+          }
+
+          # HTTPS server
+          server {
+              listen 443 ssl http2 default_server;
+              server_name _;
+
+              # SSL certificate paths (managed by Certbot)
+              ssl_certificate /etc/letsencrypt/live/test.dev-maestra.vottia.me/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/test.dev-maestra.vottia.me/privkey.pem;
+              ssl_trusted_certificate /etc/letsencrypt/live/test.dev-maestra.vottia.me/chain.pem;
+
+              # SSL configuration
+              ssl_protocols TLSv1.2 TLSv1.3;
+              ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+              ssl_prefer_server_ciphers off;
+              ssl_session_cache shared:SSL:10m;
+              ssl_session_timeout 10m;
+
+              # Security headers
+              add_header X-Frame-Options "SAMEORIGIN" always;
+              add_header X-Content-Type-Options "nosniff" always;
+              add_header X-XSS-Protection "1; mode=block" always;
+              add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+              client_max_body_size 10M;
+
+          '''
+          else:
+              # Generate HTTP-only server block
+              nginx_config = '''# HTTP server (HTTPS not configured)
+          server {
               listen 80 default_server;
               server_name _;
 
