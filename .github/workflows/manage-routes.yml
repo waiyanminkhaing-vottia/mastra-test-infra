@@ -324,10 +324,20 @@ jobs:
             sudo mkdir -p /etc/nginx/routes
             sudo mv /tmp/nginx-routes.json /etc/nginx/routes/
 
+            # Check if SSL certificates exist
+            if sudo test -f /etc/letsencrypt/live/test.dev-maestra.vottia.me/fullchain.pem; then
+              USE_HTTPS="true"
+              echo "✅ SSL certificates found - enabling HTTPS"
+            else
+              USE_HTTPS="false"
+              echo "⚠️  SSL certificates not found - using HTTP only"
+            fi
+
             # Generate nginx configuration
-            python3 << 'PYTHON_EOF'
+            USE_HTTPS=$USE_HTTPS python3 << 'PYTHON_EOF'
           import json
           import os
+          import sys
 
           # Read routes from JSON file
           try:
@@ -336,8 +346,9 @@ jobs:
           except:
               config = {'routes': []}
 
-          # Check if SSL should be used
-          use_https = os.path.exists('/etc/letsencrypt/live/test.dev-maestra.vottia.me/fullchain.pem')
+          # Check if SSL should be used (from environment)
+          use_https = os.environ.get('USE_HTTPS', 'false') == 'true'
+          print(f"HTTPS mode: {use_https}", file=sys.stderr)
 
           if use_https:
               # Generate HTTP to HTTPS redirect server block
