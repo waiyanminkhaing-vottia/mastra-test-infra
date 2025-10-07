@@ -96,9 +96,17 @@ jobs:
             if [ \$? -eq 0 ]; then
               echo "✅ SSL certificate obtained successfully"
 
-              # Setup auto-renewal cron job
+              # Setup auto-renewal using systemd timer (Amazon Linux 2023)
               echo "Setting up auto-renewal..."
-              (sudo crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet --deploy-hook 'systemctl reload nginx'") | sudo crontab -
+              sudo systemctl enable certbot-renew.timer
+              sudo systemctl start certbot-renew.timer
+
+              # Verify timer is active
+              if sudo systemctl is-active --quiet certbot-renew.timer; then
+                echo "✅ Auto-renewal timer enabled and active"
+              else
+                echo "⚠️  Auto-renewal timer may not be active"
+              fi
 
               # Start nginx
               sudo systemctl start nginx
