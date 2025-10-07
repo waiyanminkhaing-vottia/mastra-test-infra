@@ -1,11 +1,3 @@
 {
-  "routes": [
-    {
-      "name": "default",
-      "type": "proxy",
-      "route_type": "nextjs",
-      "path": "",
-      "target_port": 3500
-    }
-  ]
+  "routes": []
 }
