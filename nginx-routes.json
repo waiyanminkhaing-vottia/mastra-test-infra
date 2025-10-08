@@ -20,6 +20,13 @@
       "route_type": "nextjs",
       "path": "/fasthelp/dashboard",
       "target_port": 3001
+    },
+    {
+      "name": "fasthelp",
+      "type": "proxy",
+      "route_type": "nextjs",
+      "path": "/fasthelp",
+      "target_port": 3501
     }
   ]
 }
