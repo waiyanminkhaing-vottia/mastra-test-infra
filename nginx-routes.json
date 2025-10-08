@@ -34,6 +34,13 @@
       "route_type": "nextjs",
       "path": "/tsuzumi/dashboard",
       "target_port": 3002
+    },
+    {
+      "name": "tsuzumi",
+      "type": "proxy",
+      "route_type": "nextjs",
+      "path": "/tsuzumi",
+      "target_port": 3502
     }
   ]
 }
