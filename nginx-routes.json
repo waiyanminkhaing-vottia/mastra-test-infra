@@ -27,6 +27,13 @@
       "route_type": "nextjs",
       "path": "/fasthelp",
       "target_port": 3501
+    },
+    {
+      "name": "tuszumi/dashboard",
+      "type": "proxy",
+      "route_type": "nextjs",
+      "path": "/tsuzumi/dashboard",
+      "target_port": 3002
     }
   ]
 }
